@@ -1,0 +1,6 @@
+{
+  "name": "Edu Chat",
+  "description": "Classroom communication and assessment application for teachers and students.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
