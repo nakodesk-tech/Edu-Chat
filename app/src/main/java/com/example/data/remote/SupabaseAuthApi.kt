@@ -170,6 +170,34 @@ interface SupabaseAuthApi {
         @Query("order") order: String = "created_at.desc"
     ): Response<List<Group>>
 
+    @GET("rest/v1/groups")
+    suspend fun getGroupById(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") bearerToken: String,
+        @Query("id") idFilter: String,
+        @Query("select") select: String = "*"
+    ): Response<List<Group>>
+
+    @GET("rest/v1/group_members")
+    suspend fun getGroupMembers(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") bearerToken: String,
+        @Query("group_id") groupIdFilter: String,
+        @Query("is_active") isActiveFilter: String = "eq.true",
+        @Query("select") select: String = "*,user_profile:profiles(*)"
+    ): Response<List<GroupMember>>
+
+    @GET("rest/v1/profiles")
+    suspend fun searchProfiles(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") bearerToken: String,
+        @Query("role") roleFilter: String? = null,
+        @Query("school_id") schoolIdFilter: String? = null,
+        @Query("is_active") isActiveFilter: String = "eq.true",
+        @Query("select") select: String = "*",
+        @Query("order") order: String = "full_name.asc"
+    ): Response<List<UserProfile>>
+
     @POST("rest/v1/rpc/create_group")
     suspend fun createGroupRpc(
         @Header("apikey") apiKey: String,
