@@ -321,8 +321,8 @@ fun OfficerAdminDashboardScreen(
                     isLoading = uiState.isActionLoading,
                     errorMessage = uiState.errorMessage,
                     onDismiss = { viewModel.closeDialog() },
-                    onConfirm = { name, code, address ->
-                        viewModel.createSchool(name, code, address) { }
+                    onConfirm = { name, udiseCode, mobile, email, address ->
+                        viewModel.createSchool(name, udiseCode, mobile, email, address) { }
                     }
                 )
             }
@@ -341,8 +341,8 @@ fun OfficerAdminDashboardScreen(
                     isLoading = uiState.isActionLoading,
                     errorMessage = uiState.errorMessage,
                     onDismiss = { viewModel.openDialog(OfficerAdminDialog.ManageSchools) },
-                    onConfirm = { name, code, address, isActive ->
-                        viewModel.updateSchool(dialog.school.id, name, code, address, isActive) { }
+                    onConfirm = { name, udiseCode, mobile, email, address, isActive ->
+                        viewModel.updateSchool(dialog.school.id, name, udiseCode, mobile, email, address, isActive) { }
                     }
                 )
             }
@@ -1251,10 +1251,12 @@ private fun CreateSchoolDialog(
     isLoading: Boolean,
     errorMessage: String?,
     onDismiss: () -> Unit,
-    onConfirm: (name: String, code: String, address: String) -> Unit
+    onConfirm: (name: String, udiseCode: String, mobile: String?, email: String?, address: String?) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
-    var code by remember { mutableStateOf("") }
+    var udiseCode by remember { mutableStateOf("") }
+    var mobile by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
     var address by remember { mutableStateOf("") }
 
     Dialog(
@@ -1293,7 +1295,7 @@ private fun CreateSchoolDialog(
                 }
 
                 Text(
-                    text = "नवीन शाळेची नोंदणी करा. शाळा कोड अद्वितीय असणे आवश्यक आहे.",
+                    text = "नवीन शाळेची नोंदणी करा. शाळा UDISE कोड अद्वितीय असणे आवश्यक आहे.",
                     style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary)
                 )
 
@@ -1311,10 +1313,11 @@ private fun CreateSchoolDialog(
                     }
                 }
 
+                // 1. School Name
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("शाळेचे नाव (School Name)") },
+                    label = { Text("शाळेचे नाव (School Name) *") },
                     leadingIcon = { Icon(Icons.Default.School, contentDescription = null) },
                     singleLine = true,
                     modifier = Modifier
@@ -1322,18 +1325,49 @@ private fun CreateSchoolDialog(
                         .testTag("input_school_name")
                 )
 
+                // 2. School UDISE Code
                 OutlinedTextField(
-                    value = code,
-                    onValueChange = { code = it },
-                    label = { Text("शाळा कोड (Unique School Code)") },
+                    value = udiseCode,
+                    onValueChange = { udiseCode = it },
+                    label = { Text("शाळा UDISE कोड (UDISE Code) *") },
                     leadingIcon = { Icon(Icons.Default.Domain, contentDescription = null) },
-                    placeholder = { Text("e.g. SCH-PUN-005") },
+                    placeholder = { Text("e.g. 27251401501") },
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
+                        .testTag("input_school_udise_code")
                         .testTag("input_school_code")
                 )
 
+                // 3. Mobile Number
+                OutlinedTextField(
+                    value = mobile,
+                    onValueChange = { mobile = it },
+                    label = { Text("मोबाईल क्रमांक (Mobile Number)") },
+                    leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null) },
+                    placeholder = { Text("e.g. 9822012345") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("input_school_mobile")
+                )
+
+                // 4. E-Mail ID
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    label = { Text("ई-मेल आयडी (E-Mail ID)") },
+                    leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
+                    placeholder = { Text("e.g. school@educhat.edu") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("input_school_email")
+                )
+
+                // 5. Address
                 OutlinedTextField(
                     value = address,
                     onValueChange = { address = it },
@@ -1344,6 +1378,25 @@ private fun CreateSchoolDialog(
                         .fillMaxWidth()
                         .testTag("input_school_address")
                 )
+
+                // 6. Active Status Indicator
+                Surface(
+                    color = SecondaryGreenContainer.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = OnSecondaryGreenContainer, modifier = Modifier.size(16.dp))
+                        Text(
+                            text = "नोंदणीनंतर शाळा डीफॉल्टनुसार 'सक्रिय (Active)' राहील.",
+                            style = MaterialTheme.typography.bodySmall.copy(color = OnSecondaryGreenContainer)
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(4.dp))
 
@@ -1357,8 +1410,16 @@ private fun CreateSchoolDialog(
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
-                        onClick = { onConfirm(name, code, address) },
-                        enabled = !isLoading && name.isNotBlank() && code.isNotBlank(),
+                        onClick = {
+                            onConfirm(
+                                name,
+                                udiseCode,
+                                mobile.ifBlank { null },
+                                email.ifBlank { null },
+                                address.ifBlank { null }
+                            )
+                        },
+                        enabled = !isLoading && name.isNotBlank() && udiseCode.isNotBlank(),
                         colors = ButtonDefaults.buttonColors(containerColor = SecondaryGreen),
                         modifier = Modifier.testTag("btn_submit_school")
                     ) {
@@ -1387,7 +1448,11 @@ private fun ManageSchoolsDialog(
 ) {
     var searchQuery by remember { mutableStateOf("") }
     val filteredSchools = schools.filter {
-        it.name.contains(searchQuery, ignoreCase = true) || it.code.contains(searchQuery, ignoreCase = true)
+        it.name.contains(searchQuery, ignoreCase = true) ||
+                it.udiseCode.contains(searchQuery, ignoreCase = true) ||
+                it.code.contains(searchQuery, ignoreCase = true) ||
+                (it.email?.contains(searchQuery, ignoreCase = true) == true) ||
+                (it.mobile?.contains(searchQuery, ignoreCase = true) == true)
     }
 
     Dialog(
@@ -1437,7 +1502,7 @@ private fun ManageSchoolsDialog(
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    placeholder = { Text("शाळा किंवा कोड शोधा (Search...)") },
+                    placeholder = { Text("शाळा, UDISE कोड, ई-मेल शोधा (Search...)") },
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1484,10 +1549,11 @@ private fun SchoolItemCard(
     onEdit: () -> Unit,
     onToggleStatus: () -> Unit
 ) {
+    val displayCode = school.displayCode
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .testTag("school_card_${school.code}"),
+            .testTag("school_card_$displayCode"),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, BorderSubtle)
@@ -1517,7 +1583,7 @@ private fun SchoolItemCard(
                         overflow = TextOverflow.Ellipsis
                     )
 
-                    // Status Badge
+                    // Status Badge (Active Status)
                     Surface(
                         shape = RoundedCornerShape(4.dp),
                         color = if (school.isActive) SecondaryGreenContainer else Color(0xFFFEE2E2)
@@ -1535,16 +1601,45 @@ private fun SchoolItemCard(
                 }
 
                 Text(
-                    text = "कोड: ${school.code}",
+                    text = "UDISE कोड: $displayCode",
                     style = MaterialTheme.typography.bodySmall.copy(
                         color = TextSecondary,
                         fontWeight = FontWeight.Medium
                     )
                 )
 
+                // Mobile & Email
+                if (!school.mobile.isNullOrBlank() || !school.email.isNullOrBlank()) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (!school.mobile.isNullOrBlank()) {
+                            Text(
+                                text = "📞 ${school.mobile}",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = TextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            )
+                        }
+                        if (!school.email.isNullOrBlank()) {
+                            Text(
+                                text = "✉️ ${school.email}",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = TextSecondary,
+                                    fontSize = 11.sp
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+
                 if (!school.address.isNullOrBlank()) {
                     Text(
-                        text = school.address,
+                        text = "📍 ${school.address}",
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = TextTertiary,
                             fontSize = 11.sp
@@ -1564,6 +1659,7 @@ private fun SchoolItemCard(
                     onClick = onEdit,
                     modifier = Modifier
                         .size(36.dp)
+                        .testTag("btn_edit_school_$displayCode")
                         .testTag("btn_edit_school_${school.code}")
                 ) {
                     Icon(
@@ -1578,6 +1674,7 @@ private fun SchoolItemCard(
                     onClick = onToggleStatus,
                     modifier = Modifier
                         .size(36.dp)
+                        .testTag("btn_toggle_status_$displayCode")
                         .testTag("btn_toggle_status_${school.code}")
                 ) {
                     Icon(
@@ -1601,10 +1698,12 @@ private fun EditSchoolDialog(
     isLoading: Boolean,
     errorMessage: String?,
     onDismiss: () -> Unit,
-    onConfirm: (name: String, code: String, address: String, isActive: Boolean) -> Unit
+    onConfirm: (name: String, udiseCode: String, mobile: String?, email: String?, address: String?, isActive: Boolean) -> Unit
 ) {
     var name by remember { mutableStateOf(school.name) }
-    var code by remember { mutableStateOf(school.code) }
+    var udiseCode by remember { mutableStateOf(school.displayCode) }
+    var mobile by remember { mutableStateOf(school.mobile ?: "") }
+    var email by remember { mutableStateOf(school.email ?: "") }
     var address by remember { mutableStateOf(school.address ?: "") }
     var isActive by remember { mutableStateOf(school.isActive) }
 
@@ -1657,36 +1756,70 @@ private fun EditSchoolDialog(
                     }
                 }
 
+                // 1. School Name
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("शाळेचे नाव (School Name)") },
+                    label = { Text("शाळेचे नाव (School Name) *") },
+                    leadingIcon = { Icon(Icons.Default.School, contentDescription = null) },
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("input_edit_school_name")
                 )
 
+                // 2. School UDISE Code
                 OutlinedTextField(
-                    value = code,
-                    onValueChange = { code = it },
-                    label = { Text("शाळा कोड (School Code)") },
+                    value = udiseCode,
+                    onValueChange = { udiseCode = it },
+                    label = { Text("शाळा UDISE कोड (UDISE Code) *") },
+                    leadingIcon = { Icon(Icons.Default.Domain, contentDescription = null) },
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
+                        .testTag("input_edit_school_udise_code")
                         .testTag("input_edit_school_code")
                 )
 
+                // 3. Mobile Number
+                OutlinedTextField(
+                    value = mobile,
+                    onValueChange = { mobile = it },
+                    label = { Text("मोबाईल क्रमांक (Mobile Number)") },
+                    leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("input_edit_school_mobile")
+                )
+
+                // 4. E-Mail ID
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    label = { Text("ई-मेल आयडी (E-Mail ID)") },
+                    leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("input_edit_school_email")
+                )
+
+                // 5. Address
                 OutlinedTextField(
                     value = address,
                     onValueChange = { address = it },
                     label = { Text("पत्ता (Address)") },
+                    leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null) },
                     maxLines = 3,
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("input_edit_school_address")
                 )
 
+                // 6. Active Status Switch
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1715,8 +1848,17 @@ private fun EditSchoolDialog(
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
-                        onClick = { onConfirm(name, code, address, isActive) },
-                        enabled = !isLoading && name.isNotBlank() && code.isNotBlank(),
+                        onClick = {
+                            onConfirm(
+                                name,
+                                udiseCode,
+                                mobile.ifBlank { null },
+                                email.ifBlank { null },
+                                address.ifBlank { null },
+                                isActive
+                            )
+                        },
+                        enabled = !isLoading && name.isNotBlank() && udiseCode.isNotBlank(),
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryIndigo),
                         modifier = Modifier.testTag("btn_save_edit_school")
                     ) {

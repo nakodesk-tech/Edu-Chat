@@ -184,15 +184,19 @@ class OfficerAdminDashboardViewModel(application: Application) : AndroidViewMode
      */
     fun createSchool(
         name: String,
-        code: String,
-        address: String,
+        udiseCode: String,
+        mobile: String? = null,
+        email: String? = null,
+        address: String? = null,
         onSuccess: () -> Unit
     ) {
         viewModelScope.launch {
             _uiState.update { it.copy(isActionLoading = true, errorMessage = null) }
             val result = officerRepo.createSchool(
                 nameInput = name,
-                codeInput = code,
+                udiseCodeInput = udiseCode,
+                mobileInput = mobile,
+                emailInput = email,
                 addressInput = address
             )
 
@@ -218,14 +222,33 @@ class OfficerAdminDashboardViewModel(application: Application) : AndroidViewMode
     }
 
     /**
+     * Backward-compatible overload for createSchool
+     */
+    fun createSchool(
+        name: String,
+        code: String,
+        address: String,
+        onSuccess: () -> Unit
+    ) = createSchool(
+        name = name,
+        udiseCode = code,
+        mobile = null,
+        email = null,
+        address = address,
+        onSuccess = onSuccess
+    )
+
+    /**
      * Tile 4: Update School
      */
     fun updateSchool(
         schoolId: String,
         name: String,
-        code: String,
-        address: String,
-        isActive: Boolean,
+        udiseCode: String,
+        mobile: String? = null,
+        email: String? = null,
+        address: String? = null,
+        isActive: Boolean = true,
         onSuccess: () -> Unit
     ) {
         viewModelScope.launch {
@@ -233,7 +256,9 @@ class OfficerAdminDashboardViewModel(application: Application) : AndroidViewMode
             val result = officerRepo.updateSchool(
                 schoolId = schoolId,
                 nameInput = name,
-                codeInput = code,
+                udiseCodeInput = udiseCode,
+                mobileInput = mobile,
+                emailInput = email,
                 addressInput = address,
                 isActive = isActive
             )
@@ -258,6 +283,27 @@ class OfficerAdminDashboardViewModel(application: Application) : AndroidViewMode
             }
         }
     }
+
+    /**
+     * Backward-compatible overload for updateSchool
+     */
+    fun updateSchool(
+        schoolId: String,
+        name: String,
+        code: String,
+        address: String,
+        isActive: Boolean,
+        onSuccess: () -> Unit
+    ) = updateSchool(
+        schoolId = schoolId,
+        name = name,
+        udiseCode = code,
+        mobile = null,
+        email = null,
+        address = address,
+        isActive = isActive,
+        onSuccess = onSuccess
+    )
 
     /**
      * Tile 4: Request Deactivation (Shows confirmation with staff count)

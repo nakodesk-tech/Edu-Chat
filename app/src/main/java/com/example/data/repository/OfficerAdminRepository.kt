@@ -381,12 +381,15 @@ class OfficerAdminRepository(private val context: Context) {
 
     /**
      * Tile 3: Register a New School
-     * School Code must be unique. Default isActive = true.
+     * Exactly 6 attributes: School Name, UDISE Code, Mobile Number, E-Mail ID, Address, Active Status.
+     * UDISE Code must be unique (enforced by DB constraint / RPC). Default isActive = true.
      */
     suspend fun createSchool(
         nameInput: String,
-        codeInput: String,
-        addressInput: String?
+        udiseCodeInput: String,
+        mobileInput: String? = null,
+        emailInput: String? = null,
+        addressInput: String? = null
     ): Result<School> = withContext(Dispatchers.IO) {
         val authCheck = checkOfficerAdminAuthorization()
         if (authCheck.isFailure) {
@@ -395,14 +398,22 @@ class OfficerAdminRepository(private val context: Context) {
         val currentSession = authCheck.getOrNull()!!
 
         val name = nameInput.trim()
-        val code = codeInput.trim().uppercase()
+        val udiseCode = udiseCodeInput.trim().uppercase()
+        val mobile = mobileInput?.trim()?.ifBlank { null }
+        val email = emailInput?.trim()?.lowercase()?.ifBlank { null }
         val address = addressInput?.trim()?.ifBlank { null }
 
         if (name.isBlank()) {
             return@withContext Result.failure(IllegalArgumentException("School name cannot be blank."))
         }
-        if (code.isBlank()) {
-            return@withContext Result.failure(IllegalArgumentException("School code cannot be blank."))
+        if (udiseCode.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("School UDISE code cannot be blank."))
+        }
+        if (mobile != null && mobile.length < 10) {
+            return@withContext Result.failure(IllegalArgumentException("Please enter a valid 10-digit mobile number."))
+        }
+        if (email != null && !Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+            return@withContext Result.failure(IllegalArgumentException("Please enter a valid email address."))
         }
 
         if (SupabaseConfig.isConfigured(context)) {
@@ -414,7 +425,10 @@ class OfficerAdminRepository(private val context: Context) {
                     bearerToken = "Bearer ${currentSession.accessToken}",
                     request = CreateSchoolRequest(
                         name = name,
-                        code = code,
+                        udiseCode = udiseCode,
+                        code = udiseCode,
+                        mobile = mobile,
+                        email = email,
                         address = address
                     )
                 )
@@ -423,32 +437,54 @@ class OfficerAdminRepository(private val context: Context) {
                 } else {
                     val rawError = response.errorBody()?.string()
                     val parsed = SupabaseClient.parseError(rawError)
-                    Result.failure(Exception(parsed ?: "Failed to register school. School code may already exist."))
+                    Result.failure(Exception(parsed ?: "Failed to register school. UDISE code may already exist."))
                 }
             } catch (e: Exception) {
                 Result.failure(e)
             }
         } else {
-            // Check for duplicate school code in simulated database
-            val existing = SimulatedDatabase.findSchoolByCode(code)
+            // Check for duplicate school UDISE code in simulated database
+            val existing = SimulatedDatabase.findSchoolByUdiseCode(udiseCode)
             if (existing != null) {
-                return@withContext Result.failure(IllegalArgumentException("School code '$code' is already registered. School code must be unique."))
+                return@withContext Result.failure(IllegalArgumentException("School UDISE code '$udiseCode' is already registered. Duplicate UDISE codes are rejected by database unique constraint."))
             }
 
             val newSchool = School(
                 id = UUID.randomUUID().toString(),
                 name = name,
-                code = code,
+                udiseCode = udiseCode,
+                code = udiseCode,
+                mobile = mobile,
+                email = email,
                 address = address,
                 isActive = true,
                 createdAt = "2026-08-26T12:00:00Z",
                 updatedAt = "2026-08-26T12:00:00Z"
             )
 
-            SimulatedDatabase.addSchool(newSchool)
-            Result.success(newSchool)
+            try {
+                SimulatedDatabase.addSchool(newSchool)
+                Result.success(newSchool)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
         }
     }
+
+    /**
+     * Backward-compatible overload for 3-argument createSchool
+     */
+    suspend fun createSchool(
+        nameInput: String,
+        codeInput: String,
+        addressInput: String?
+    ): Result<School> = createSchool(
+        nameInput = nameInput,
+        udiseCodeInput = codeInput,
+        mobileInput = null,
+        emailInput = null,
+        addressInput = addressInput
+    )
 
     /**
      * Tile 4: Update Existing School
@@ -456,9 +492,11 @@ class OfficerAdminRepository(private val context: Context) {
     suspend fun updateSchool(
         schoolId: String,
         nameInput: String,
-        codeInput: String,
-        addressInput: String?,
-        isActive: Boolean
+        udiseCodeInput: String,
+        mobileInput: String? = null,
+        emailInput: String? = null,
+        addressInput: String? = null,
+        isActive: Boolean = true
     ): Result<School> = withContext(Dispatchers.IO) {
         val authCheck = checkOfficerAdminAuthorization()
         if (authCheck.isFailure) {
@@ -467,14 +505,22 @@ class OfficerAdminRepository(private val context: Context) {
         val currentSession = authCheck.getOrNull()!!
 
         val name = nameInput.trim()
-        val code = codeInput.trim().uppercase()
+        val udiseCode = udiseCodeInput.trim().uppercase()
+        val mobile = mobileInput?.trim()?.ifBlank { null }
+        val email = emailInput?.trim()?.lowercase()?.ifBlank { null }
         val address = addressInput?.trim()?.ifBlank { null }
 
         if (name.isBlank()) {
             return@withContext Result.failure(IllegalArgumentException("School name cannot be blank."))
         }
-        if (code.isBlank()) {
-            return@withContext Result.failure(IllegalArgumentException("School code cannot be blank."))
+        if (udiseCode.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("School UDISE code cannot be blank."))
+        }
+        if (mobile != null && mobile.length < 10) {
+            return@withContext Result.failure(IllegalArgumentException("Please enter a valid 10-digit mobile number."))
+        }
+        if (email != null && !Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+            return@withContext Result.failure(IllegalArgumentException("Please enter a valid email address."))
         }
 
         if (SupabaseConfig.isConfigured(context)) {
@@ -487,7 +533,10 @@ class OfficerAdminRepository(private val context: Context) {
                     request = UpdateSchoolRequest(
                         schoolId = schoolId,
                         name = name,
-                        code = code,
+                        udiseCode = udiseCode,
+                        code = udiseCode,
+                        mobile = mobile,
+                        email = email,
                         address = address,
                         isActive = isActive
                     )
@@ -503,27 +552,53 @@ class OfficerAdminRepository(private val context: Context) {
                 Result.failure(e)
             }
         } else {
-            val existingWithCode = SimulatedDatabase.findSchoolByCode(code)
+            val existingWithCode = SimulatedDatabase.findSchoolByUdiseCode(udiseCode)
             if (existingWithCode != null && existingWithCode.id != schoolId) {
-                return@withContext Result.failure(IllegalArgumentException("School code '$code' is already in use by another school."))
+                return@withContext Result.failure(IllegalArgumentException("School UDISE code '$udiseCode' is already in use by another school."))
             }
 
-            val updated = SimulatedDatabase.updateSchool(schoolId) { current ->
-                current.copy(
-                    name = name,
-                    code = code,
-                    address = address,
-                    isActive = isActive,
-                    updatedAt = "2026-08-26T12:00:00Z"
-                )
-            }
-            if (updated != null) {
-                Result.success(updated)
-            } else {
-                Result.failure(IllegalStateException("School not found."))
+            try {
+                val updated = SimulatedDatabase.updateSchool(schoolId) { current ->
+                    current.copy(
+                        name = name,
+                        udiseCode = udiseCode,
+                        code = udiseCode,
+                        mobile = mobile,
+                        email = email,
+                        address = address,
+                        isActive = isActive,
+                        updatedAt = "2026-08-26T12:00:00Z"
+                    )
+                }
+                if (updated != null) {
+                    Result.success(updated)
+                } else {
+                    Result.failure(IllegalStateException("School not found."))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
             }
         }
     }
+
+    /**
+     * Backward-compatible overload for updateSchool
+     */
+    suspend fun updateSchool(
+        schoolId: String,
+        nameInput: String,
+        codeInput: String,
+        addressInput: String?,
+        isActive: Boolean
+    ): Result<School> = updateSchool(
+        schoolId = schoolId,
+        nameInput = nameInput,
+        udiseCodeInput = codeInput,
+        mobileInput = null,
+        emailInput = null,
+        addressInput = addressInput,
+        isActive = isActive
+    )
 
     /**
      * Tile 4: Activate / Deactivate School (Soft Deactivation)

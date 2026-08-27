@@ -35,7 +35,10 @@ object SimulatedDatabase {
                 School(
                     id = "s0000000-0001-4000-8000-000000000001",
                     name = "जिल्हा परिषद प्राथमिक शाळा, पुणे (ZP Primary School)",
+                    udiseCode = "27251401501",
                     code = "SCH-PUN-001",
+                    mobile = "9822012345",
+                    email = "zp.pune.01@educhat.edu",
                     address = "शिवाजीनगर, पुणे, महाराष्ट्र ४११०१६",
                     isActive = true,
                     createdAt = "2026-01-01T08:00:00Z",
@@ -44,7 +47,10 @@ object SimulatedDatabase {
                 School(
                     id = "s0000000-0002-4000-8000-000000000002",
                     name = "शासकीय माध्यमिक विद्यालय, ठाणे (Govt High School)",
+                    udiseCode = "27210100102",
                     code = "SCH-THA-002",
+                    mobile = "9822067890",
+                    email = "govt.thane.02@educhat.edu",
                     address = "नौपाडा, ठाणे (पश्चिम), महाराष्ट्र ४००६०२",
                     isActive = true,
                     createdAt = "2026-01-05T09:00:00Z",
@@ -53,7 +59,10 @@ object SimulatedDatabase {
                 School(
                     id = "s0000000-0003-4000-8000-000000000003",
                     name = "महात्मा फुले विद्यालय, नागपूर (Phule Vidya Mandir)",
+                    udiseCode = "27091500203",
                     code = "SCH-NAG-003",
+                    mobile = "9822099887",
+                    email = "phule.nagpur.03@educhat.edu",
                     address = "धरमपेठ, नागपूर, महाराष्ट्र ४४००१०",
                     isActive = false,
                     createdAt = "2026-01-10T10:00:00Z",
@@ -201,11 +210,30 @@ object SimulatedDatabase {
 
     @Synchronized
     fun findSchoolByCode(code: String): School? {
-        return schools.firstOrNull { it.code.equals(code.trim(), ignoreCase = true) }
+        val trimmed = code.trim()
+        return schools.firstOrNull {
+            it.udiseCode.equals(trimmed, ignoreCase = true) || it.code.equals(trimmed, ignoreCase = true)
+        }
+    }
+
+    @Synchronized
+    fun findSchoolByUdiseCode(udiseCode: String): School? {
+        val trimmed = udiseCode.trim()
+        return schools.firstOrNull {
+            it.udiseCode.equals(trimmed, ignoreCase = true) || it.code.equals(trimmed, ignoreCase = true)
+        }
     }
 
     @Synchronized
     fun addSchool(school: School) {
+        val targetCode = school.udiseCode.ifBlank { school.code }.trim()
+        val duplicate = schools.firstOrNull {
+            val existingCode = it.udiseCode.ifBlank { it.code }.trim()
+            existingCode.equals(targetCode, ignoreCase = true)
+        }
+        if (duplicate != null) {
+            throw IllegalArgumentException("School UDISE code '$targetCode' is already registered. Duplicate UDISE codes are rejected by database unique constraint.")
+        }
         schools.add(0, school)
     }
 
@@ -215,6 +243,13 @@ object SimulatedDatabase {
         if (index != -1) {
             val current = schools[index]
             val updated = transform(current)
+            val targetCode = updated.udiseCode.ifBlank { updated.code }.trim()
+            val duplicate = schools.firstOrNull {
+                it.id != id && (it.udiseCode.ifBlank { it.code }.trim().equals(targetCode, ignoreCase = true))
+            }
+            if (duplicate != null) {
+                throw IllegalArgumentException("School UDISE code '$targetCode' is already registered. Duplicate UDISE codes are rejected by database unique constraint.")
+            }
             schools[index] = updated
             return updated
         }
