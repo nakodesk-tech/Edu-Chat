@@ -126,12 +126,6 @@ fun OfficerAdminDashboardScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val chatViewModel: ChatGroupViewModel = viewModel()
 
-    LaunchedEffect(uiState.isLoggedOut) {
-        if (uiState.isLoggedOut) {
-            onLogout()
-        }
-    }
-
     LaunchedEffect(uiState.snackbarMessage) {
         uiState.snackbarMessage?.let { msg ->
             snackbarHostState.showSnackbar(msg)
@@ -292,7 +286,7 @@ fun OfficerAdminDashboardScreen(
                         OfficerProfileTabContent(
                             profile = uiState.profile,
                             onEditProfile = { viewModel.openDialog(OfficerAdminDialog.MyProfile) },
-                            onLogout = { viewModel.logout() }
+                            onLogout = onLogout
                         )
                     }
                 }

@@ -40,8 +40,7 @@ data class OfficerAdminDashboardUiState(
     val activeSchools: List<School> = emptyList(),
     val currentDialog: OfficerAdminDialog = OfficerAdminDialog.None,
     val snackbarMessage: String? = null,
-    val errorMessage: String? = null,
-    val isLoggedOut: Boolean = false
+    val errorMessage: String? = null
 )
 
 class OfficerAdminDashboardViewModel(application: Application) : AndroidViewModel(application) {
@@ -348,7 +347,6 @@ class OfficerAdminDashboardViewModel(application: Application) : AndroidViewMode
     fun logout() {
         viewModelScope.launch {
             authRepo.logout()
-            _uiState.update { it.copy(isLoggedOut = true) }
         }
     }
 }

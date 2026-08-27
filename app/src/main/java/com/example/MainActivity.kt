@@ -52,14 +52,15 @@ fun AppNavigation(viewModel: AuthViewModel) {
         when (state) {
             is AuthUiState.Authenticated -> {
                 val profile = state.session.profile
+                val sessionKey = "${profile.id}_${state.session.accessToken}"
                 if (profile.userRole == UserRole.OFFICER_ADMIN && profile.isActive) {
-                    val officerViewModel: OfficerAdminDashboardViewModel = viewModel()
+                    val officerViewModel: OfficerAdminDashboardViewModel = viewModel(key = "officer_$sessionKey")
                     OfficerAdminDashboardScreen(
                         viewModel = officerViewModel,
                         onLogout = { viewModel.logout() }
                     )
                 } else if (profile.userRole == UserRole.SCHOOL_ADMIN && profile.isActive && !profile.schoolId.isNullOrBlank()) {
-                    val schoolAdminViewModel: SchoolAdminDashboardViewModel = viewModel()
+                    val schoolAdminViewModel: SchoolAdminDashboardViewModel = viewModel(key = "school_admin_$sessionKey")
                     SchoolAdminDashboardScreen(
                         viewModel = schoolAdminViewModel,
                         onLogout = { viewModel.logout() }

@@ -344,4 +344,31 @@ class OfficerAdminDashboardTest {
         assertFalse("Client must NOT contain service_role key", apiKey.contains("service_role", ignoreCase = true))
         assertFalse("Client must NOT contain secret key", apiKey.contains("secret", ignoreCase = true))
     }
+
+    // 18. Officer Admin Login -> Logout -> Immediate Re-login without restart
+    @Test
+    fun officer_admin_login_logout_immediate_relogin_without_restart() = runBlocking {
+        // Step 1: Officer Admin login succeeds
+        val login1 = authRepository.login("admin@educhat.edu", "password123", UserRole.OFFICER_ADMIN)
+        assertTrue("First login succeeds", login1 is AuthResult.Success)
+        val authCheck1 = officerAdminRepository.checkOfficerAdminAuthorization()
+        assertTrue("Officer authorized", authCheck1.isSuccess)
+
+        // Step 2: Tap Logout
+        authRepository.logout()
+        assertFalse("Logged out", authRepository.isUserLoggedIn())
+        assertNull("Session cleared", sessionManager.getSession())
+
+        // Step 3 & 4: Immediate Login again with same valid credentials without app restart
+        val login2 = authRepository.login("admin@educhat.edu", "password123", UserRole.OFFICER_ADMIN)
+        assertTrue("Immediate second login succeeds", login2 is AuthResult.Success)
+        assertTrue("User is logged in", authRepository.isUserLoggedIn())
+
+        // Step 5: Dashboard authorization and profile retrieval work immediately
+        val authCheck2 = officerAdminRepository.checkOfficerAdminAuthorization()
+        assertTrue("Officer authorization succeeds on immediate re-login", authCheck2.isSuccess)
+        val profile2 = authCheck2.getOrNull()!!.profile
+        assertEquals("admin@educhat.edu", profile2.email)
+        assertEquals("officer_admin", profile2.role)
+    }
 }
