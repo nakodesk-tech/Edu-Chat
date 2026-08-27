@@ -3,6 +3,7 @@ package com.example.data.repository
 import android.content.Context
 import com.example.data.local.SessionManager
 import com.example.data.model.AddGroupMemberRequest
+import com.example.data.model.ChatMessage
 import com.example.data.model.CreateGroupRequest
 import com.example.data.model.Group
 import com.example.data.model.GroupDetails
@@ -10,6 +11,7 @@ import com.example.data.model.GroupMember
 import com.example.data.model.GroupType
 import com.example.data.model.RemoveGroupMemberRequest
 import com.example.data.model.School
+import com.example.data.model.SendGroupMessageRequest
 import com.example.data.model.UserProfile
 import com.example.data.model.UserRole
 import com.example.data.remote.SupabaseAuthApi
@@ -376,6 +378,84 @@ class GroupRepository(
             }
         } catch (e: Exception) {
             Result.failure(Exception("सर्व्हरशी संपर्क होऊ शकला नाही. कृपया पुन्हा प्रयत्न करा.", e))
+        }
+    }
+
+    suspend fun getGroupMessages(
+        groupId: String,
+        limit: Int = 50,
+        offset: Int = 0
+    ): Result<List<ChatMessage>> = withContext(Dispatchers.IO) {
+        try {
+            if (groupId.isBlank()) {
+                return@withContext Result.failure(IllegalArgumentException("Group ID cannot be blank"))
+            }
+            val profile = getActiveSessionProfile()
+            val (api, token) = getApiAndToken()
+            val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
+
+            val response = api.getGroupMessages(
+                apiKey = anonKey,
+                bearerToken = "Bearer $token",
+                groupIdFilter = "eq.$groupId",
+                isDeletedFilter = "eq.false",
+                select = "*,sender_profile:profiles(*)",
+                order = "created_at.asc"
+            )
+
+            if (response.isSuccessful && response.body() != null) {
+                val messages = response.body()!!
+                val paginated = if (offset > 0 || messages.size > limit) {
+                    messages.drop(offset).take(limit)
+                } else {
+                    messages
+                }
+                return@withContext Result.success(paginated)
+            } else if (response.code() == 401 || response.code() == 403) {
+                return@withContext Result.failure(SecurityException("आपल्याला या गटातील संदेश पाहण्याची परवानगी नाही."))
+            } else {
+                return@withContext Result.failure(Exception("सर्व्हरशी संपर्क होऊ शकला नाही. कृपया पुन्हा प्रयत्न करा."))
+            }
+        } catch (e: SecurityException) {
+            Result.failure(e)
+        } catch (e: Exception) {
+            Result.failure(Exception("सर्व्हरशी संपर्क होऊ शकला नाही. कृपया पुन्हा प्रयत्न करा.", e))
+        }
+    }
+
+    suspend fun sendGroupMessage(
+        groupId: String,
+        content: String
+    ): Result<ChatMessage> = withContext(Dispatchers.IO) {
+        try {
+            val trimmedContent = content.trim()
+            if (groupId.isBlank()) {
+                return@withContext Result.failure(IllegalArgumentException("Group ID cannot be blank"))
+            }
+            if (trimmedContent.isBlank()) {
+                return@withContext Result.failure(IllegalArgumentException("संदेश रिकामा असू शकत नाही. (Message content cannot be blank)"))
+            }
+            val profile = getActiveSessionProfile()
+            val (api, token) = getApiAndToken()
+            val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
+
+            val response = api.sendGroupMessageRpc(
+                apiKey = anonKey,
+                bearerToken = "Bearer $token",
+                request = SendGroupMessageRequest(groupId = groupId, content = trimmedContent)
+            )
+
+            if (response.isSuccessful && response.body() != null) {
+                return@withContext Result.success(response.body()!!)
+            } else if (response.code() == 401 || response.code() == 403) {
+                return@withContext Result.failure(SecurityException("आपल्याला या गटात संदेश पाठवण्याची परवानगी नाही."))
+            } else {
+                return@withContext Result.failure(Exception("संदेश पाठवण्यात त्रुटी आली. कृपया पुन्हा प्रयत्न करा."))
+            }
+        } catch (e: SecurityException) {
+            Result.failure(e)
+        } catch (e: Exception) {
+            Result.failure(Exception("संदेश पाठवण्यात त्रुटी आली. कृपया पुन्हा प्रयत्न करा.", e))
         }
     }
 }

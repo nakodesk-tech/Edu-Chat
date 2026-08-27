@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.SessionManager
+import com.example.data.model.ChatMessage
 import com.example.data.model.Group
 import com.example.data.model.GroupMember
 import com.example.data.model.GroupType
@@ -21,10 +22,14 @@ data class ChatGroupUiState(
     val isLoading: Boolean = false,
     val isActionLoading: Boolean = false,
     val isDetailLoading: Boolean = false,
+    val isMessagesLoading: Boolean = false,
+    val isSendingMessage: Boolean = false,
     val currentProfile: UserProfile? = null,
     val groups: List<Group> = emptyList(),
     val selectedGroup: Group? = null,
     val selectedGroupMembers: List<GroupMember> = emptyList(),
+    val messages: List<ChatMessage> = emptyList(),
+    val messageInput: String = "",
     val activeSchools: List<School> = emptyList(),
     val showCreateDialog: Boolean = false,
     val showGroupDetailDialog: Boolean = false,
@@ -375,6 +380,62 @@ class ChatGroupViewModel(application: Application) : AndroidViewModel(applicatio
                     it.copy(
                         isActionLoading = false,
                         errorMessage = res.exceptionOrNull()?.message ?: "सदस्य काढण्यात अडचण आली."
+                    )
+                }
+            }
+        }
+    }
+
+    fun setMessageInput(input: String) {
+        _uiState.update { it.copy(messageInput = input) }
+    }
+
+    fun loadMessages(groupId: String) {
+        if (groupId.isBlank()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isMessagesLoading = true, errorMessage = null) }
+            val res = groupRepo.getGroupMessages(groupId)
+            if (res.isSuccess) {
+                _uiState.update {
+                    it.copy(
+                        isMessagesLoading = false,
+                        messages = res.getOrThrow()
+                    )
+                }
+            } else {
+                _uiState.update {
+                    it.copy(
+                        isMessagesLoading = false,
+                        errorMessage = res.exceptionOrNull()?.message ?: "संदेश लोड करण्यात अडचण आली."
+                    )
+                }
+            }
+        }
+    }
+
+    fun sendMessage(groupId: String, content: String = _uiState.value.messageInput) {
+        val trimmed = content.trim()
+        if (groupId.isBlank() || trimmed.isBlank()) {
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSendingMessage = true, errorMessage = null) }
+            val res = groupRepo.sendGroupMessage(groupId, trimmed)
+            if (res.isSuccess) {
+                val sentMessage = res.getOrThrow()
+                _uiState.update { state ->
+                    val updatedList = state.messages + sentMessage
+                    state.copy(
+                        isSendingMessage = false,
+                        messageInput = "",
+                        messages = updatedList
+                    )
+                }
+            } else {
+                _uiState.update {
+                    it.copy(
+                        isSendingMessage = false,
+                        errorMessage = res.exceptionOrNull()?.message ?: "संदेश पाठवण्यात त्रुटी आली."
                     )
                 }
             }

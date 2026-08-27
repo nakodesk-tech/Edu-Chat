@@ -486,6 +486,50 @@ class GroupSecurityTest {
         assertFalse(fieldNames.any { it.contains("db_password") })
         assertFalse(fieldNames.any { it.contains("master_key") })
     }
+
+    // 26. Active member can send and read messages
+    @Test
+    fun test26_activeMemberCanSendAndReadMessages() = runBlocking {
+        setSession(officerAdmin)
+        val created = groupRepository.createGroup("Security Council", GroupType.ADMINISTRATIVE.name).getOrNull()!!
+
+        val sendRes = groupRepository.sendGroupMessage(created.id, "Hello, team!")
+        assertTrue(sendRes.isSuccess)
+        val sent = sendRes.getOrNull()!!
+        assertEquals("Hello, team!", sent.content)
+        assertEquals(officerAdmin.id, sent.senderId)
+
+        val messagesRes = groupRepository.getGroupMessages(created.id)
+        assertTrue(messagesRes.isSuccess)
+        val messages = messagesRes.getOrNull()!!
+        assertEquals(1, messages.size)
+        assertEquals("Hello, team!", messages[0].content)
+    }
+
+    // 27. Non-member cannot send or read messages (Fail closed)
+    @Test
+    fun test27_nonMemberCannotSendOrReadMessages() = runBlocking {
+        setSession(officerAdmin)
+        val created = groupRepository.createGroup("Admin Only Group", GroupType.ADMINISTRATIVE.name).getOrNull()!!
+
+        // Switch to puneStudent1 who is not in the group
+        setSession(puneStudent1)
+        val sendRes = groupRepository.sendGroupMessage(created.id, "Unauthorized message")
+        assertFalse(sendRes.isSuccess)
+
+        val readRes = groupRepository.getGroupMessages(created.id)
+        assertFalse(readRes.isSuccess)
+    }
+
+    // 28. Blank message content is rejected
+    @Test
+    fun test28_blankMessageContentRejected() = runBlocking {
+        setSession(officerAdmin)
+        val created = groupRepository.createGroup("Discussion", GroupType.ADMINISTRATIVE.name).getOrNull()!!
+
+        val sendBlank = groupRepository.sendGroupMessage(created.id, "   ")
+        assertFalse(sendBlank.isSuccess)
+    }
 }
 
 /**
@@ -496,6 +540,7 @@ open class FakeSupabaseDatabaseEngine : SupabaseAuthApi {
     private val groups = mutableListOf<Group>()
     private val groupMembers = mutableListOf<GroupMember>()
     private val schools = mutableListOf<School>()
+    private val messages = mutableListOf<ChatMessage>()
 
     fun addProfile(p: UserProfile) {
         profiles.removeIf { it.id == p.id }
@@ -719,6 +764,48 @@ open class FakeSupabaseDatabaseEngine : SupabaseAuthApi {
     override suspend fun officerAdminCreateSchoolRpc(apiKey: String, bearerToken: String, request: CreateSchoolRequest): Response<School> = Response.success(null)
     override suspend fun officerAdminUpdateSchoolRpc(apiKey: String, bearerToken: String, request: UpdateSchoolRequest): Response<School> = Response.success(null)
     override suspend fun patchProfile(apiKey: String, bearerToken: String, idFilter: String, updates: Map<String, Any?>): Response<List<UserProfile>> = Response.success(emptyList())
-    override suspend fun getGroupMessages(apiKey: String, bearerToken: String, groupIdFilter: String, isDeletedFilter: String, select: String, order: String): Response<List<ChatMessage>> = Response.success(emptyList())
-    override suspend fun sendGroupMessageRpc(apiKey: String, bearerToken: String, request: SendGroupMessageRequest): Response<ChatMessage> = Response.success(null)
+    override suspend fun getGroupMessages(apiKey: String, bearerToken: String, groupIdFilter: String, isDeletedFilter: String, select: String, order: String): Response<List<ChatMessage>> {
+        val callerId = getCallerId(bearerToken)
+        val caller = profiles.firstOrNull { it.id == callerId }
+        if (caller == null || !caller.isActive) {
+            return Response.error(401, "Unauthorized".toResponseBody("application/json".toMediaTypeOrNull()))
+        }
+        val targetGroupId = groupIdFilter.removePrefix("eq.")
+        val isMember = groupMembers.any { it.groupId == targetGroupId && it.userId == callerId && it.isActive }
+        if (!isMember) {
+            return Response.error(403, "Forbidden".toResponseBody("application/json".toMediaTypeOrNull()))
+        }
+        val groupMsgs = messages.filter { it.groupId == targetGroupId && !it.isDeleted }
+        return Response.success(groupMsgs)
+    }
+
+    override suspend fun sendGroupMessageRpc(apiKey: String, bearerToken: String, request: SendGroupMessageRequest): Response<ChatMessage> {
+        val callerId = getCallerId(bearerToken)
+        val caller = profiles.firstOrNull { it.id == callerId }
+        if (caller == null || !caller.isActive) {
+            return Response.error(401, "Unauthorized".toResponseBody("application/json".toMediaTypeOrNull()))
+        }
+        val group = groups.firstOrNull { it.id == request.groupId && it.isActive }
+            ?: return Response.error(404, "Group not found".toResponseBody("application/json".toMediaTypeOrNull()))
+
+        val isMember = groupMembers.any { it.groupId == group.id && it.userId == callerId && it.isActive }
+        if (!isMember) {
+            return Response.error(403, "Not a member".toResponseBody("application/json".toMediaTypeOrNull()))
+        }
+        if (request.content.trim().isBlank()) {
+            return Response.error(400, "Blank content".toResponseBody("application/json".toMediaTypeOrNull()))
+        }
+        val newMsg = ChatMessage(
+            id = UUID.randomUUID().toString(),
+            groupId = request.groupId,
+            senderId = callerId,
+            content = request.content.trim(),
+            createdAt = "2026-08-27T09:30:00Z",
+            updatedAt = "2026-08-27T09:30:00Z",
+            isDeleted = false,
+            senderProfile = caller
+        )
+        messages.add(newMsg)
+        return Response.success(newMsg)
+    }
 }
