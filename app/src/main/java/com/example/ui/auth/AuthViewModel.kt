@@ -7,6 +7,7 @@ import com.example.data.model.AuthSession
 import com.example.data.model.UserRole
 import com.example.data.repository.AuthRepository
 import com.example.data.repository.AuthResult
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -38,14 +39,19 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     private val _formState = MutableStateFlow(LoginFormState())
     val formState: StateFlow<LoginFormState> = _formState.asStateFlow()
 
+    private var loginJob: Job? = null
+    private var logoutJob: Job? = null
+
     init {
         checkExistingSession()
     }
 
-    private fun checkExistingSession() {
+    fun checkExistingSession() {
         val existingSession = repository.getActiveSession()
         if (existingSession != null && existingSession.profile.isActive) {
             _uiState.value = AuthUiState.Authenticated(existingSession)
+        } else {
+            _uiState.value = AuthUiState.Idle
         }
     }
 
@@ -116,7 +122,12 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
         if (hasError) return
 
-        viewModelScope.launch {
+        // Cancel any pending logout job or previous login job to prevent race conditions
+        logoutJob?.cancel()
+        logoutJob = null
+        loginJob?.cancel()
+
+        loginJob = viewModelScope.launch {
             _uiState.value = AuthUiState.Loading
             when (val result = repository.login(form.email, form.password, form.selectedRole)) {
                 is AuthResult.Success -> {
@@ -130,9 +141,24 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun logout() {
-        viewModelScope.launch {
+        // Cancel any active login job to ensure no previous login coroutine overwrites state
+        loginJob?.cancel()
+        loginJob = null
+        logoutJob?.cancel()
+
+        // 1. Immediately reset UI state to Idle so Login screen is instantly interactive
+        _uiState.value = AuthUiState.Idle
+
+        // 2. Synchronously clear local session credentials
+        repository.clearLocalSession()
+
+        // 3. Launch background repository logout without blocking UI state
+        logoutJob = viewModelScope.launch {
             repository.logout()
-            _uiState.value = AuthUiState.Idle
+            // Ensure UI state remains Idle if it hasn't transitioned to a new user-initiated state
+            if (_uiState.value !is AuthUiState.Authenticated && _uiState.value !is AuthUiState.Loading && _uiState.value !is AuthUiState.Error) {
+                _uiState.value = AuthUiState.Idle
+            }
         }
     }
 

@@ -1,15 +1,20 @@
 package com.example
 
+import android.app.Application
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.local.SessionManager
 import com.example.data.model.UserRole
 import com.example.data.repository.AuthRepository
 import com.example.data.repository.AuthResult
+import com.example.ui.auth.AuthUiState
+import com.example.ui.auth.AuthViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -196,6 +201,117 @@ class AuthRepositoryTest {
         assertTrue(authRepository.isUserLoggedIn())
 
         authRepository.logout()
+        assertFalse(authRepository.isUserLoggedIn())
+    }
+
+    // 11. Login → Logout → Login without app restart
+    @Test
+    fun test_login_logout_login_without_app_restart() = runBlocking {
+        // Initial Login as Officer Admin
+        val firstLogin = authRepository.login("admin@educhat.edu", "password123", UserRole.OFFICER_ADMIN)
+        assertTrue(firstLogin is AuthResult.Success)
+        assertTrue(authRepository.isUserLoggedIn())
+        assertEquals("officer_admin", sessionManager.getUserProfile()?.role)
+
+        // Logout
+        val logoutSuccess = authRepository.logout()
+        assertTrue(logoutSuccess)
+        assertFalse(authRepository.isUserLoggedIn())
+        assertNull(sessionManager.getAccessToken())
+        assertNull(sessionManager.getUserProfile())
+
+        // Immediate Re-login without restarting app
+        val secondLogin = authRepository.login("admin@educhat.edu", "password123", UserRole.OFFICER_ADMIN)
+        assertTrue(secondLogin is AuthResult.Success)
+        assertTrue(authRepository.isUserLoggedIn())
+        assertEquals("officer_admin", sessionManager.getUserProfile()?.role)
+        assertEquals("admin@educhat.edu", sessionManager.getUserProfile()?.email)
+    }
+
+    // 12. Logout clears access token, refresh token and cached profile
+    @Test
+    fun test_logout_clears_access_token_refresh_token_and_cached_profile() = runBlocking {
+        authRepository.login("teacher@educhat.edu", "password123", UserRole.TEACHER)
+        assertNotNull(sessionManager.getAccessToken())
+        assertNotNull(sessionManager.getRefreshToken())
+        assertNotNull(sessionManager.getUserProfile())
+        assertNotNull(sessionManager.getSession())
+
+        authRepository.logout()
+
+        assertNull("Access token must be null after logout", sessionManager.getAccessToken())
+        assertNull("Refresh token must be null after logout", sessionManager.getRefreshToken())
+        assertNull("User profile must be null after logout", sessionManager.getUserProfile())
+        assertNull("Session must be null after logout", sessionManager.getSession())
+        assertFalse("hasActiveSession must return false", sessionManager.hasActiveSession())
+    }
+
+    // 13. New login after logout reaches Authenticated in ViewModel
+    @Test
+    fun test_new_login_after_logout_reaches_authenticated_in_viewmodel() = runBlocking {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val viewModel = AuthViewModel(app)
+        org.robolectric.shadows.ShadowLooper.idleMainLooper()
+
+        // Fill credentials & login
+        viewModel.fillDemoCredentials("admin@educhat.edu", "password123", UserRole.OFFICER_ADMIN)
+        viewModel.login()
+
+        var attempts = 0
+        while (viewModel.uiState.value !is AuthUiState.Authenticated && attempts < 50) {
+            org.robolectric.shadows.ShadowLooper.idleMainLooper()
+            kotlinx.coroutines.delay(20)
+            attempts++
+        }
+
+        // Wait/assert authenticated
+        assertTrue("ViewModel should reach Authenticated", viewModel.uiState.value is AuthUiState.Authenticated)
+        val firstSession = (viewModel.uiState.value as AuthUiState.Authenticated).session
+        assertEquals(UserRole.OFFICER_ADMIN, firstSession.profile.userRole)
+
+        // Logout
+        viewModel.logout()
+        org.robolectric.shadows.ShadowLooper.idleMainLooper()
+        assertEquals("State should immediately be Idle after logout", AuthUiState.Idle, viewModel.uiState.value)
+        assertFalse(sessionManager.hasActiveSession())
+
+        // Immediate Re-login without restart
+        viewModel.fillDemoCredentials("admin@educhat.edu", "password123", UserRole.OFFICER_ADMIN)
+        viewModel.login()
+
+        attempts = 0
+        while (viewModel.uiState.value !is AuthUiState.Authenticated && attempts < 50) {
+            org.robolectric.shadows.ShadowLooper.idleMainLooper()
+            kotlinx.coroutines.delay(20)
+            attempts++
+        }
+
+        assertTrue("ViewModel should reach Authenticated again on immediate re-login", viewModel.uiState.value is AuthUiState.Authenticated)
+        val secondSession = (viewModel.uiState.value as AuthUiState.Authenticated).session
+        assertEquals("admin@educhat.edu", secondSession.profile.email)
+    }
+
+    // 14. Role mismatch rejection still works after logout/login cycle
+    @Test
+    fun test_role_mismatch_rejection_after_logout_cycle() = runBlocking {
+        authRepository.login("teacher@educhat.edu", "password123", UserRole.TEACHER)
+        authRepository.logout()
+
+        val mismatchLogin = authRepository.login("teacher@educhat.edu", "password123", UserRole.OFFICER_ADMIN)
+        assertTrue(mismatchLogin is AuthResult.Error)
+        assertEquals("The selected role does not match your account.", (mismatchLogin as AuthResult.Error).message)
+        assertFalse(authRepository.isUserLoggedIn())
+    }
+
+    // 15. Inactive account rejection still works after logout/login cycle
+    @Test
+    fun test_inactive_account_rejection_after_logout_cycle() = runBlocking {
+        authRepository.login("teacher@educhat.edu", "password123", UserRole.TEACHER)
+        authRepository.logout()
+
+        val inactiveLogin = authRepository.login("inactive@educhat.edu", "password123", UserRole.STUDENT)
+        assertTrue(inactiveLogin is AuthResult.Error)
+        assertEquals("This account has been deactivated. Please contact your administrator.", (inactiveLogin as AuthResult.Error).message)
         assertFalse(authRepository.isUserLoggedIn())
     }
 }

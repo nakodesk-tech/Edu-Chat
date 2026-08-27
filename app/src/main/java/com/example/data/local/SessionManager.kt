@@ -63,7 +63,7 @@ class SessionManager(context: Context) {
             .remove(KEY_ACCESS_TOKEN)
             .remove(KEY_REFRESH_TOKEN)
             .remove(KEY_USER_PROFILE)
-            .apply()
+            .commit()
     }
 
     fun hasActiveSession(): Boolean {

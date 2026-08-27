@@ -12,7 +12,9 @@ import com.example.data.model.UserProfile
 import com.example.data.model.UserRole
 import com.example.data.remote.SupabaseClient
 import com.example.data.remote.SupabaseConfig
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
@@ -282,17 +284,26 @@ class AuthRepository(private val context: Context) {
 
     suspend fun logout(): Boolean = withContext(Dispatchers.IO) {
         val token = sessionManager.getAccessToken()
+        // 1. Immediately clear local session without waiting for remote request
+        sessionManager.clearSession()
+
+        // 2. Best-effort remote Supabase logout in background (non-blocking)
         if (token != null && SupabaseConfig.isConfigured(context)) {
-            try {
-                val api = SupabaseClient.getApi(context)
-                val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
-                api.logout(apiKey = anonKey, bearerToken = "Bearer $token")
-            } catch (_: Exception) {
-                // Ignore network errors on logout
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val api = SupabaseClient.getApi(context)
+                    val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
+                    api.logout(apiKey = anonKey, bearerToken = "Bearer $token")
+                } catch (_: Exception) {
+                    // Ignore network errors on logout
+                }
             }
         }
-        sessionManager.clearSession()
         return@withContext true
+    }
+
+    fun clearLocalSession() {
+        sessionManager.clearSession()
     }
 }
 
