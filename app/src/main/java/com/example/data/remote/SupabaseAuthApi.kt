@@ -3,6 +3,7 @@ package com.example.data.remote
 import com.example.data.model.AdminCreateUserRequest
 import com.example.data.model.AdminToggleStatusRequest
 import com.example.data.model.AdminUpdateUserRequest
+import com.example.data.model.ChatMessage
 import com.example.data.model.CreateGroupRequest
 import com.example.data.model.CreateSchoolRequest
 import com.example.data.model.Group
@@ -13,6 +14,7 @@ import com.example.data.model.OfficerAdminCreateUserRequest
 import com.example.data.model.School
 import com.example.data.model.SchoolAdminCreateTeacherRequest
 import com.example.data.model.SchoolAdminUpdateTeacherRequest
+import com.example.data.model.SendGroupMessageRequest
 import com.example.data.model.SupabaseLoginRequest
 import com.example.data.model.SupabaseSignupRequest
 import com.example.data.model.SupabaseTokenResponse
@@ -218,4 +220,21 @@ interface SupabaseAuthApi {
         @Header("Authorization") bearerToken: String,
         @Body request: RemoveGroupMemberRequest
     ): Response<Boolean>
+
+    @GET("rest/v1/messages")
+    suspend fun getGroupMessages(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") bearerToken: String,
+        @Query("group_id") groupIdFilter: String,
+        @Query("is_deleted") isDeletedFilter: String = "eq.false",
+        @Query("select") select: String = "*,sender_profile:profiles(*)",
+        @Query("order") order: String = "created_at.asc"
+    ): Response<List<ChatMessage>>
+
+    @POST("rest/v1/rpc/send_group_message")
+    suspend fun sendGroupMessageRpc(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") bearerToken: String,
+        @Body request: SendGroupMessageRequest
+    ): Response<ChatMessage>
 }

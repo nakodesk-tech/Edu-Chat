@@ -9,6 +9,7 @@ import com.example.data.model.AdminCreateUserRequest
 import com.example.data.model.AdminToggleStatusRequest
 import com.example.data.model.AdminUpdateUserRequest
 import com.example.data.model.AuthSession
+import com.example.data.model.ChatMessage
 import com.example.data.model.CreateGroupRequest
 import com.example.data.model.CreateSchoolRequest
 import com.example.data.model.Group
@@ -19,6 +20,7 @@ import com.example.data.model.RemoveGroupMemberRequest
 import com.example.data.model.School
 import com.example.data.model.SchoolAdminCreateTeacherRequest
 import com.example.data.model.SchoolAdminUpdateTeacherRequest
+import com.example.data.model.SendGroupMessageRequest
 import com.example.data.model.SupabaseLoginRequest
 import com.example.data.model.SupabaseSignupRequest
 import com.example.data.model.SupabaseTokenResponse
@@ -717,4 +719,6 @@ open class FakeSupabaseDatabaseEngine : SupabaseAuthApi {
     override suspend fun officerAdminCreateSchoolRpc(apiKey: String, bearerToken: String, request: CreateSchoolRequest): Response<School> = Response.success(null)
     override suspend fun officerAdminUpdateSchoolRpc(apiKey: String, bearerToken: String, request: UpdateSchoolRequest): Response<School> = Response.success(null)
     override suspend fun patchProfile(apiKey: String, bearerToken: String, idFilter: String, updates: Map<String, Any?>): Response<List<UserProfile>> = Response.success(emptyList())
+    override suspend fun getGroupMessages(apiKey: String, bearerToken: String, groupIdFilter: String, isDeletedFilter: String, select: String, order: String): Response<List<ChatMessage>> = Response.success(emptyList())
+    override suspend fun sendGroupMessageRpc(apiKey: String, bearerToken: String, request: SendGroupMessageRequest): Response<ChatMessage> = Response.success(null)
 }

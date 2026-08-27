@@ -83,3 +83,21 @@ data class GroupDetails(
     val creatorProfile: UserProfile? = null
 )
 
+@JsonClass(generateAdapter = true)
+data class ChatMessage(
+    @Json(name = "id") val id: String,
+    @Json(name = "group_id") val groupId: String,
+    @Json(name = "sender_id") val senderId: String,
+    @Json(name = "content") val content: String,
+    @Json(name = "created_at") val createdAt: String? = null,
+    @Json(name = "updated_at") val updatedAt: String? = null,
+    @Json(name = "is_deleted") val isDeleted: Boolean = false,
+    @Json(name = "sender_profile") val senderProfile: UserProfile? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class SendGroupMessageRequest(
+    @Json(name = "group_id") val groupId: String,
+    @Json(name = "content") val content: String
+)
+
