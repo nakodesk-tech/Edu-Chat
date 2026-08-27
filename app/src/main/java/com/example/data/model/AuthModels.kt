@@ -50,24 +50,19 @@ data class UserProfile(
 data class School(
     @Json(name = "id") val id: String,
     @Json(name = "name") val name: String,
-    @Json(name = "udise_code") val udiseCode: String = "",
-    @Json(name = "code") val code: String = "",
+    @Json(name = "code") val code: String,
     @Json(name = "mobile") val mobile: String? = null,
     @Json(name = "email") val email: String? = null,
     @Json(name = "address") val address: String? = null,
     @Json(name = "is_active") val isActive: Boolean = true,
     @Json(name = "created_at") val createdAt: String? = null,
     @Json(name = "updated_at") val updatedAt: String? = null
-) {
-    val displayCode: String
-        get() = if (udiseCode.isNotBlank()) udiseCode else code
-}
+)
 
 @JsonClass(generateAdapter = true)
 data class CreateSchoolRequest(
     @Json(name = "name") val name: String,
-    @Json(name = "udise_code") val udiseCode: String,
-    @Json(name = "code") val code: String? = null,
+    @Json(name = "code") val code: String,
     @Json(name = "mobile") val mobile: String? = null,
     @Json(name = "email") val email: String? = null,
     @Json(name = "address") val address: String? = null
@@ -77,8 +72,7 @@ data class CreateSchoolRequest(
 data class UpdateSchoolRequest(
     @Json(name = "school_id") val schoolId: String,
     @Json(name = "name") val name: String,
-    @Json(name = "udise_code") val udiseCode: String,
-    @Json(name = "code") val code: String? = null,
+    @Json(name = "code") val code: String,
     @Json(name = "mobile") val mobile: String? = null,
     @Json(name = "email") val email: String? = null,
     @Json(name = "address") val address: String? = null,

@@ -381,12 +381,12 @@ class OfficerAdminRepository(private val context: Context) {
 
     /**
      * Tile 3: Register a New School
-     * Exactly 6 attributes: School Name, UDISE Code, Mobile Number, E-Mail ID, Address, Active Status.
-     * UDISE Code must be unique (enforced by DB constraint / RPC). Default isActive = true.
+     * Exactly 6 attributes: School Name, UDISE Code (stored in 'code'), Mobile Number, E-Mail ID, Address, Active Status.
+     * School Code must be unique (enforced by DB constraint / RPC). Default isActive = true.
      */
     suspend fun createSchool(
         nameInput: String,
-        udiseCodeInput: String,
+        codeInput: String,
         mobileInput: String? = null,
         emailInput: String? = null,
         addressInput: String? = null
@@ -398,7 +398,7 @@ class OfficerAdminRepository(private val context: Context) {
         val currentSession = authCheck.getOrNull()!!
 
         val name = nameInput.trim()
-        val udiseCode = udiseCodeInput.trim().uppercase()
+        val code = codeInput.trim().uppercase()
         val mobile = mobileInput?.trim()?.ifBlank { null }
         val email = emailInput?.trim()?.lowercase()?.ifBlank { null }
         val address = addressInput?.trim()?.ifBlank { null }
@@ -406,8 +406,8 @@ class OfficerAdminRepository(private val context: Context) {
         if (name.isBlank()) {
             return@withContext Result.failure(IllegalArgumentException("School name cannot be blank."))
         }
-        if (udiseCode.isBlank()) {
-            return@withContext Result.failure(IllegalArgumentException("School UDISE code cannot be blank."))
+        if (code.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("School code cannot be blank."))
         }
         if (mobile != null && mobile.length < 10) {
             return@withContext Result.failure(IllegalArgumentException("Please enter a valid 10-digit mobile number."))
@@ -425,8 +425,7 @@ class OfficerAdminRepository(private val context: Context) {
                     bearerToken = "Bearer ${currentSession.accessToken}",
                     request = CreateSchoolRequest(
                         name = name,
-                        udiseCode = udiseCode,
-                        code = udiseCode,
+                        code = code,
                         mobile = mobile,
                         email = email,
                         address = address
@@ -437,23 +436,22 @@ class OfficerAdminRepository(private val context: Context) {
                 } else {
                     val rawError = response.errorBody()?.string()
                     val parsed = SupabaseClient.parseError(rawError)
-                    Result.failure(Exception(parsed ?: "Failed to register school. UDISE code may already exist."))
+                    Result.failure(Exception(parsed ?: "Failed to register school. School code may already exist."))
                 }
             } catch (e: Exception) {
                 Result.failure(e)
             }
         } else {
-            // Check for duplicate school UDISE code in simulated database
-            val existing = SimulatedDatabase.findSchoolByUdiseCode(udiseCode)
+            // Check for duplicate school code in simulated database
+            val existing = SimulatedDatabase.findSchoolByCode(code)
             if (existing != null) {
-                return@withContext Result.failure(IllegalArgumentException("School UDISE code '$udiseCode' is already registered. Duplicate UDISE codes are rejected by database unique constraint."))
+                return@withContext Result.failure(IllegalArgumentException("School code '$code' is already registered. School code must be unique."))
             }
 
             val newSchool = School(
                 id = UUID.randomUUID().toString(),
                 name = name,
-                udiseCode = udiseCode,
-                code = udiseCode,
+                code = code,
                 mobile = mobile,
                 email = email,
                 address = address,
@@ -480,7 +478,7 @@ class OfficerAdminRepository(private val context: Context) {
         addressInput: String?
     ): Result<School> = createSchool(
         nameInput = nameInput,
-        udiseCodeInput = codeInput,
+        codeInput = codeInput,
         mobileInput = null,
         emailInput = null,
         addressInput = addressInput
@@ -492,7 +490,7 @@ class OfficerAdminRepository(private val context: Context) {
     suspend fun updateSchool(
         schoolId: String,
         nameInput: String,
-        udiseCodeInput: String,
+        codeInput: String,
         mobileInput: String? = null,
         emailInput: String? = null,
         addressInput: String? = null,
@@ -505,7 +503,7 @@ class OfficerAdminRepository(private val context: Context) {
         val currentSession = authCheck.getOrNull()!!
 
         val name = nameInput.trim()
-        val udiseCode = udiseCodeInput.trim().uppercase()
+        val code = codeInput.trim().uppercase()
         val mobile = mobileInput?.trim()?.ifBlank { null }
         val email = emailInput?.trim()?.lowercase()?.ifBlank { null }
         val address = addressInput?.trim()?.ifBlank { null }
@@ -513,8 +511,8 @@ class OfficerAdminRepository(private val context: Context) {
         if (name.isBlank()) {
             return@withContext Result.failure(IllegalArgumentException("School name cannot be blank."))
         }
-        if (udiseCode.isBlank()) {
-            return@withContext Result.failure(IllegalArgumentException("School UDISE code cannot be blank."))
+        if (code.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("School code cannot be blank."))
         }
         if (mobile != null && mobile.length < 10) {
             return@withContext Result.failure(IllegalArgumentException("Please enter a valid 10-digit mobile number."))
@@ -533,8 +531,7 @@ class OfficerAdminRepository(private val context: Context) {
                     request = UpdateSchoolRequest(
                         schoolId = schoolId,
                         name = name,
-                        udiseCode = udiseCode,
-                        code = udiseCode,
+                        code = code,
                         mobile = mobile,
                         email = email,
                         address = address,
@@ -552,17 +549,16 @@ class OfficerAdminRepository(private val context: Context) {
                 Result.failure(e)
             }
         } else {
-            val existingWithCode = SimulatedDatabase.findSchoolByUdiseCode(udiseCode)
+            val existingWithCode = SimulatedDatabase.findSchoolByCode(code)
             if (existingWithCode != null && existingWithCode.id != schoolId) {
-                return@withContext Result.failure(IllegalArgumentException("School UDISE code '$udiseCode' is already in use by another school."))
+                return@withContext Result.failure(IllegalArgumentException("School code '$code' is already in use by another school."))
             }
 
             try {
                 val updated = SimulatedDatabase.updateSchool(schoolId) { current ->
                     current.copy(
                         name = name,
-                        udiseCode = udiseCode,
-                        code = udiseCode,
+                        code = code,
                         mobile = mobile,
                         email = email,
                         address = address,
@@ -593,7 +589,7 @@ class OfficerAdminRepository(private val context: Context) {
     ): Result<School> = updateSchool(
         schoolId = schoolId,
         nameInput = nameInput,
-        udiseCodeInput = codeInput,
+        codeInput = codeInput,
         mobileInput = null,
         emailInput = null,
         addressInput = addressInput,

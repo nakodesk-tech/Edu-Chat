@@ -220,15 +220,14 @@ class OfficerAdminDashboardTest {
 
         val result = officerAdminRepository.createSchool(
             nameInput = "नवीन प्राथमिक शाळा, कोल्हापूर (Kolhapur Model School)",
-            udiseCodeInput = "27260100504",
+            codeInput = "27260100504",
             mobileInput = "9822123456",
             emailInput = "kolhapur.04@educhat.edu",
             addressInput = "शाहूपुरी, कोल्हापूर, महाराष्ट्र ४१६००१"
         )
         assertTrue("School creation must succeed", result.isSuccess)
         val school = result.getOrNull()!!
-        assertEquals("27260100504", school.udiseCode)
-        assertEquals("27260100504", school.displayCode)
+        assertEquals("27260100504", school.code)
         assertEquals("नवीन प्राथमिक शाळा, कोल्हापूर (Kolhapur Model School)", school.name)
         assertEquals("9822123456", school.mobile)
         assertEquals("kolhapur.04@educhat.edu", school.email)
@@ -236,19 +235,19 @@ class OfficerAdminDashboardTest {
         assertTrue("Default is_active must be true", school.isActive)
     }
 
-    // 11. Duplicate school UDISE code is rejected by database unique constraint
+    // 11. Duplicate school code is rejected by database unique constraint
     @Test
     fun duplicate_school_code_is_rejected() = runBlocking {
         authRepository.login("admin@educhat.edu", "password123", UserRole.OFFICER_ADMIN)
 
         val duplicateResult = officerAdminRepository.createSchool(
             nameInput = "Duplicate School",
-            udiseCodeInput = "27251401501", // Existing Pune UDISE code
+            codeInput = "SCH-PUN-001", // Existing Pune school code
             mobileInput = "9822000000",
             emailInput = "dup@educhat.edu",
             addressInput = "Pune"
         )
-        assertTrue("Duplicate school UDISE code must be rejected", duplicateResult.isFailure)
+        assertTrue("Duplicate school code must be rejected", duplicateResult.isFailure)
         assertTrue(duplicateResult.exceptionOrNull() is IllegalArgumentException)
         assertTrue(duplicateResult.exceptionOrNull()!!.message!!.contains("unique"))
     }
@@ -262,7 +261,7 @@ class OfficerAdminDashboardTest {
         val result = officerAdminRepository.updateSchool(
             schoolId = schoolId,
             nameInput = "जिल्हा परिषद आदर्श शाळा, पुणे",
-            udiseCodeInput = "27251401599",
+            codeInput = "27251401599",
             mobileInput = "9822099999",
             emailInput = "updated.pune@educhat.edu",
             addressInput = "शिवाजीनगर विस्तारित, पुणे ४११०१६",
@@ -271,7 +270,7 @@ class OfficerAdminDashboardTest {
         assertTrue("School update must succeed", result.isSuccess)
         val updated = result.getOrNull()!!
         assertEquals("जिल्हा परिषद आदर्श शाळा, पुणे", updated.name)
-        assertEquals("27251401599", updated.udiseCode)
+        assertEquals("27251401599", updated.code)
         assertEquals("9822099999", updated.mobile)
         assertEquals("updated.pune@educhat.edu", updated.email)
         assertEquals("शिवाजीनगर विस्तारित, पुणे ४११०१६", updated.address)
@@ -285,7 +284,7 @@ class OfficerAdminDashboardTest {
 
         val badMobileResult = officerAdminRepository.createSchool(
             nameInput = "Test School",
-            udiseCodeInput = "27299900001",
+            codeInput = "27299900001",
             mobileInput = "123", // invalid mobile length
             emailInput = "valid@educhat.edu",
             addressInput = "Pune"
@@ -295,7 +294,7 @@ class OfficerAdminDashboardTest {
 
         val badEmailResult = officerAdminRepository.createSchool(
             nameInput = "Test School",
-            udiseCodeInput = "27299900001",
+            codeInput = "27299900001",
             mobileInput = "9822000000",
             emailInput = "not-an-email", // invalid email format
             addressInput = "Pune"

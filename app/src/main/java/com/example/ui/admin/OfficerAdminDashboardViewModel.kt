@@ -184,7 +184,7 @@ class OfficerAdminDashboardViewModel(application: Application) : AndroidViewMode
      */
     fun createSchool(
         name: String,
-        udiseCode: String,
+        code: String,
         mobile: String? = null,
         email: String? = null,
         address: String? = null,
@@ -194,7 +194,7 @@ class OfficerAdminDashboardViewModel(application: Application) : AndroidViewMode
             _uiState.update { it.copy(isActionLoading = true, errorMessage = null) }
             val result = officerRepo.createSchool(
                 nameInput = name,
-                udiseCodeInput = udiseCode,
+                codeInput = code,
                 mobileInput = mobile,
                 emailInput = email,
                 addressInput = address
@@ -231,7 +231,7 @@ class OfficerAdminDashboardViewModel(application: Application) : AndroidViewMode
         onSuccess: () -> Unit
     ) = createSchool(
         name = name,
-        udiseCode = code,
+        code = code,
         mobile = null,
         email = null,
         address = address,
@@ -244,7 +244,7 @@ class OfficerAdminDashboardViewModel(application: Application) : AndroidViewMode
     fun updateSchool(
         schoolId: String,
         name: String,
-        udiseCode: String,
+        code: String,
         mobile: String? = null,
         email: String? = null,
         address: String? = null,
@@ -256,7 +256,7 @@ class OfficerAdminDashboardViewModel(application: Application) : AndroidViewMode
             val result = officerRepo.updateSchool(
                 schoolId = schoolId,
                 nameInput = name,
-                udiseCodeInput = udiseCode,
+                codeInput = code,
                 mobileInput = mobile,
                 emailInput = email,
                 addressInput = address,
@@ -297,7 +297,7 @@ class OfficerAdminDashboardViewModel(application: Application) : AndroidViewMode
     ) = updateSchool(
         schoolId = schoolId,
         name = name,
-        udiseCode = code,
+        code = code,
         mobile = null,
         email = null,
         address = address,

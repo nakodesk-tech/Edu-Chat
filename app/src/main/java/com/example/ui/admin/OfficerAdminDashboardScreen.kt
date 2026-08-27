@@ -321,8 +321,8 @@ fun OfficerAdminDashboardScreen(
                     isLoading = uiState.isActionLoading,
                     errorMessage = uiState.errorMessage,
                     onDismiss = { viewModel.closeDialog() },
-                    onConfirm = { name, udiseCode, mobile, email, address ->
-                        viewModel.createSchool(name, udiseCode, mobile, email, address) { }
+                    onConfirm = { name, code, mobile, email, address ->
+                        viewModel.createSchool(name, code, mobile, email, address) { }
                     }
                 )
             }
@@ -341,8 +341,8 @@ fun OfficerAdminDashboardScreen(
                     isLoading = uiState.isActionLoading,
                     errorMessage = uiState.errorMessage,
                     onDismiss = { viewModel.openDialog(OfficerAdminDialog.ManageSchools) },
-                    onConfirm = { name, udiseCode, mobile, email, address, isActive ->
-                        viewModel.updateSchool(dialog.school.id, name, udiseCode, mobile, email, address, isActive) { }
+                    onConfirm = { name, code, mobile, email, address, isActive ->
+                        viewModel.updateSchool(dialog.school.id, name, code, mobile, email, address, isActive) { }
                     }
                 )
             }
@@ -1251,10 +1251,10 @@ private fun CreateSchoolDialog(
     isLoading: Boolean,
     errorMessage: String?,
     onDismiss: () -> Unit,
-    onConfirm: (name: String, udiseCode: String, mobile: String?, email: String?, address: String?) -> Unit
+    onConfirm: (name: String, code: String, mobile: String?, email: String?, address: String?) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
-    var udiseCode by remember { mutableStateOf("") }
+    var code by remember { mutableStateOf("") }
     var mobile by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var address by remember { mutableStateOf("") }
@@ -1325,10 +1325,10 @@ private fun CreateSchoolDialog(
                         .testTag("input_school_name")
                 )
 
-                // 2. School UDISE Code
+                // 2. School UDISE Code (stored in 'code')
                 OutlinedTextField(
-                    value = udiseCode,
-                    onValueChange = { udiseCode = it },
+                    value = code,
+                    onValueChange = { code = it },
                     label = { Text("शाळा UDISE कोड (UDISE Code) *") },
                     leadingIcon = { Icon(Icons.Default.Domain, contentDescription = null) },
                     placeholder = { Text("e.g. 27251401501") },
@@ -1413,13 +1413,13 @@ private fun CreateSchoolDialog(
                         onClick = {
                             onConfirm(
                                 name,
-                                udiseCode,
+                                code,
                                 mobile.ifBlank { null },
                                 email.ifBlank { null },
                                 address.ifBlank { null }
                             )
                         },
-                        enabled = !isLoading && name.isNotBlank() && udiseCode.isNotBlank(),
+                        enabled = !isLoading && name.isNotBlank() && code.isNotBlank(),
                         colors = ButtonDefaults.buttonColors(containerColor = SecondaryGreen),
                         modifier = Modifier.testTag("btn_submit_school")
                     ) {
@@ -1449,7 +1449,6 @@ private fun ManageSchoolsDialog(
     var searchQuery by remember { mutableStateOf("") }
     val filteredSchools = schools.filter {
         it.name.contains(searchQuery, ignoreCase = true) ||
-                it.udiseCode.contains(searchQuery, ignoreCase = true) ||
                 it.code.contains(searchQuery, ignoreCase = true) ||
                 (it.email?.contains(searchQuery, ignoreCase = true) == true) ||
                 (it.mobile?.contains(searchQuery, ignoreCase = true) == true)
@@ -1549,11 +1548,10 @@ private fun SchoolItemCard(
     onEdit: () -> Unit,
     onToggleStatus: () -> Unit
 ) {
-    val displayCode = school.displayCode
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .testTag("school_card_$displayCode"),
+            .testTag("school_card_${school.code}"),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, BorderSubtle)
@@ -1601,7 +1599,7 @@ private fun SchoolItemCard(
                 }
 
                 Text(
-                    text = "UDISE कोड: $displayCode",
+                    text = "UDISE कोड: ${school.code}",
                     style = MaterialTheme.typography.bodySmall.copy(
                         color = TextSecondary,
                         fontWeight = FontWeight.Medium
@@ -1659,7 +1657,6 @@ private fun SchoolItemCard(
                     onClick = onEdit,
                     modifier = Modifier
                         .size(36.dp)
-                        .testTag("btn_edit_school_$displayCode")
                         .testTag("btn_edit_school_${school.code}")
                 ) {
                     Icon(
@@ -1674,7 +1671,6 @@ private fun SchoolItemCard(
                     onClick = onToggleStatus,
                     modifier = Modifier
                         .size(36.dp)
-                        .testTag("btn_toggle_status_$displayCode")
                         .testTag("btn_toggle_status_${school.code}")
                 ) {
                     Icon(
@@ -1698,10 +1694,10 @@ private fun EditSchoolDialog(
     isLoading: Boolean,
     errorMessage: String?,
     onDismiss: () -> Unit,
-    onConfirm: (name: String, udiseCode: String, mobile: String?, email: String?, address: String?, isActive: Boolean) -> Unit
+    onConfirm: (name: String, code: String, mobile: String?, email: String?, address: String?, isActive: Boolean) -> Unit
 ) {
     var name by remember { mutableStateOf(school.name) }
-    var udiseCode by remember { mutableStateOf(school.displayCode) }
+    var code by remember { mutableStateOf(school.code) }
     var mobile by remember { mutableStateOf(school.mobile ?: "") }
     var email by remember { mutableStateOf(school.email ?: "") }
     var address by remember { mutableStateOf(school.address ?: "") }
@@ -1768,10 +1764,10 @@ private fun EditSchoolDialog(
                         .testTag("input_edit_school_name")
                 )
 
-                // 2. School UDISE Code
+                // 2. School UDISE Code (stored in 'code')
                 OutlinedTextField(
-                    value = udiseCode,
-                    onValueChange = { udiseCode = it },
+                    value = code,
+                    onValueChange = { code = it },
                     label = { Text("शाळा UDISE कोड (UDISE Code) *") },
                     leadingIcon = { Icon(Icons.Default.Domain, contentDescription = null) },
                     singleLine = true,
@@ -1851,14 +1847,14 @@ private fun EditSchoolDialog(
                         onClick = {
                             onConfirm(
                                 name,
-                                udiseCode,
+                                code,
                                 mobile.ifBlank { null },
                                 email.ifBlank { null },
                                 address.ifBlank { null },
                                 isActive
                             )
                         },
-                        enabled = !isLoading && name.isNotBlank() && udiseCode.isNotBlank(),
+                        enabled = !isLoading && name.isNotBlank() && code.isNotBlank(),
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryIndigo),
                         modifier = Modifier.testTag("btn_save_edit_school")
                     ) {
