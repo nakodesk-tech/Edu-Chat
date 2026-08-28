@@ -167,7 +167,7 @@ interface SupabaseAuthApi {
     suspend fun getGroups(
         @Header("apikey") apiKey: String,
         @Header("Authorization") bearerToken: String,
-        @Query("select") select: String = "*,group_members(*)",
+        @Query("select") select: String = "*",
         @Query("is_active") isActiveFilter: String = "eq.true",
         @Query("order") order: String = "created_at.desc"
     ): Response<List<Group>>
