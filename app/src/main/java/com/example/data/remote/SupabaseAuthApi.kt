@@ -38,6 +38,13 @@ interface SupabaseAuthApi {
         @Body request: SupabaseLoginRequest
     ): Response<SupabaseTokenResponse>
 
+    @POST("auth/v1/token")
+    suspend fun refreshToken(
+        @Query("grant_type") grantType: String = "refresh_token",
+        @Header("apikey") apiKey: String,
+        @Body request: com.example.data.model.SupabaseRefreshTokenRequest
+    ): Response<SupabaseTokenResponse>
+
     @POST("auth/v1/signup")
     suspend fun signup(
         @Header("apikey") apiKey: String,

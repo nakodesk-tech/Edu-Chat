@@ -3,10 +3,15 @@ package com.example.data.remote
 import android.content.Context
 import android.util.Log
 import com.example.BuildConfig
+import com.example.data.local.SessionManager
 import com.example.data.model.SupabaseErrorResponse
+import com.example.data.model.SupabaseTokenResponse
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
@@ -68,6 +73,8 @@ object SupabaseConfig {
 object SupabaseClient {
     private var currentUrl: String? = null
     private var cachedApi: SupabaseAuthApi? = null
+    private var appContext: Context? = null
+    private val refreshLock = Any()
 
     val moshi: Moshi = Moshi.Builder()
         .add(KotlinJsonAdapterFactory())
@@ -76,6 +83,44 @@ object SupabaseClient {
     private val okHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
+        .addInterceptor { chain ->
+            val request = chain.request()
+            val response = chain.proceed(request)
+
+            val oldAuthHeader = request.header("Authorization")
+            val isAuthTokenEndpoint = request.url.encodedPath.contains("auth/v1/token") ||
+                    request.url.encodedPath.contains("auth/v1/signup") ||
+                    request.url.encodedPath.contains("auth/v1/logout")
+
+            if (response.code == 401 && !oldAuthHeader.isNullOrBlank() && !isAuthTokenEndpoint) {
+                val ctx = appContext
+                if (ctx != null) {
+                    val sessionManager = SessionManager(ctx)
+                    val refreshToken = sessionManager.getRefreshToken()
+
+                    if (!refreshToken.isNullOrBlank()) {
+                        val latestAccessToken = synchronized(refreshLock) {
+                            val currentToken = sessionManager.getAccessToken()
+                            if (!currentToken.isNullOrBlank() && "Bearer $currentToken" != oldAuthHeader) {
+                                currentToken
+                            } else {
+                                performTokenRefresh(ctx, sessionManager, refreshToken)
+                            }
+                        }
+
+                        if (!latestAccessToken.isNullOrBlank()) {
+                            response.close()
+                            val newRequest = request.newBuilder()
+                                .header("Authorization", "Bearer $latestAccessToken")
+                                .build()
+                            return@addInterceptor chain.proceed(newRequest)
+                        }
+                    }
+                }
+            }
+
+            response
+        }
         .addInterceptor(HttpLoggingInterceptor().apply {
             // BASIC level logs only request method, URL, response status code, and execution time
             // Strictly avoids logging sensitive request bodies, passwords, or auth tokens
@@ -83,7 +128,53 @@ object SupabaseClient {
         })
         .build()
 
+    private fun performTokenRefresh(context: Context, sessionManager: SessionManager, refreshToken: String): String? {
+        val baseUrl = SupabaseConfig.getSupabaseUrl(context).let {
+            if (it.isBlank()) return null else if (!it.endsWith("/")) "$it/" else it
+        }
+        val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
+        if (anonKey.isBlank()) return null
+
+        val jsonBody = """{"refresh_token":"$refreshToken"}"""
+        val mediaType = "application/json; charset=utf-8".toMediaTypeOrNull() ?: return null
+        val refreshUrl = "${baseUrl}auth/v1/token?grant_type=refresh_token"
+
+        val refreshReq = Request.Builder()
+            .url(refreshUrl)
+            .header("apikey", anonKey)
+            .post(jsonBody.toRequestBody(mediaType))
+            .build()
+
+        val rawClient = OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .build()
+
+        try {
+            rawClient.newCall(refreshReq).execute().use { res ->
+                if (res.isSuccessful && res.body != null) {
+                    val resString = res.body!!.string()
+                    val adapter = moshi.adapter(SupabaseTokenResponse::class.java)
+                    val tokenResponse = adapter.fromJson(resString)
+                    if (tokenResponse != null && tokenResponse.accessToken.isNotBlank()) {
+                        sessionManager.updateTokens(
+                            newAccessToken = tokenResponse.accessToken,
+                            newRefreshToken = tokenResponse.refreshToken
+                        )
+                        return tokenResponse.accessToken
+                    }
+                } else if (res.code == 400 || res.code == 401) {
+                    sessionManager.clearSession()
+                }
+            }
+        } catch (_: Exception) {
+            // Network error during refresh
+        }
+        return null
+    }
+
     fun getApi(context: Context): SupabaseAuthApi {
+        appContext = context.applicationContext
         val url = SupabaseConfig.getSupabaseUrl(context).let {
             if (it.isBlank()) "https://placeholder.supabase.co" else if (!it.endsWith("/")) "$it/" else it
         }

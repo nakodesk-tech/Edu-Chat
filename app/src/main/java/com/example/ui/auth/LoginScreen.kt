@@ -211,7 +211,12 @@ fun LoginScreen(viewModel: AuthViewModel) {
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        val displayRoles = listOf(UserRole.OFFICER_ADMIN, UserRole.TEACHER, UserRole.STUDENT)
+                        val displayRoles = listOf(
+                            UserRole.OFFICER_ADMIN,
+                            UserRole.SCHOOL_ADMIN,
+                            UserRole.TEACHER,
+                            UserRole.STUDENT
+                        )
                         displayRoles.forEach { role ->
                             RoleChipButton(
                                 role = role,

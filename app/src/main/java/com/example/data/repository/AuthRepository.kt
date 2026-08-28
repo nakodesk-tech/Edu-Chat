@@ -6,6 +6,7 @@ import com.example.data.local.SimulatedDatabase
 import com.example.data.local.SimulatedDbUser
 import com.example.data.model.AuthSession
 import com.example.data.model.SupabaseLoginRequest
+import com.example.data.model.SupabaseRefreshTokenRequest
 import com.example.data.model.SupabaseSignupRequest
 import com.example.data.model.UpdateDisplayNameRequest
 import com.example.data.model.UserProfile
@@ -280,6 +281,97 @@ class AuthRepository(private val context: Context) {
             )
         )
         Result.success(newProfile)
+    }
+
+    suspend fun refreshToken(): Result<AuthSession> = withContext(Dispatchers.IO) {
+        val currentSession = sessionManager.getSession()
+        val refreshToken = sessionManager.getRefreshToken()
+
+        if (currentSession == null || refreshToken.isNullOrBlank()) {
+            sessionManager.clearSession()
+            return@withContext Result.failure(IllegalStateException("Session expired. Please log in again."))
+        }
+
+        if (SupabaseConfig.isConfigured(context)) {
+            try {
+                val api = SupabaseClient.getApi(context)
+                val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
+                val response = api.refreshToken(
+                    apiKey = anonKey,
+                    request = SupabaseRefreshTokenRequest(refreshToken = refreshToken)
+                )
+
+                if (response.isSuccessful && response.body() != null) {
+                    val tokenData = response.body()!!
+                    sessionManager.updateTokens(
+                        newAccessToken = tokenData.accessToken,
+                        newRefreshToken = tokenData.refreshToken
+                    )
+                    val updatedSession = currentSession.copy(
+                        accessToken = tokenData.accessToken,
+                        refreshToken = tokenData.refreshToken ?: currentSession.refreshToken
+                    )
+                    Result.success(updatedSession)
+                } else {
+                    sessionManager.clearSession()
+                    Result.failure(IllegalStateException("Session expired. Please log in again."))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        } else {
+            val updatedSession = currentSession.copy(
+                accessToken = "mock_jwt_token_${currentSession.profile.id}"
+            )
+            sessionManager.updateTokens(updatedSession.accessToken, updatedSession.refreshToken)
+            Result.success(updatedSession)
+        }
+    }
+
+    suspend fun validateOrRefreshSession(): AuthResult = withContext(Dispatchers.IO) {
+        val session = sessionManager.getSession() ?: return@withContext AuthResult.Error("No active session")
+        if (!session.profile.isActive) {
+            sessionManager.clearSession()
+            return@withContext AuthResult.Error("Account is deactivated")
+        }
+
+        if (!SupabaseConfig.isConfigured(context)) {
+            return@withContext AuthResult.Success(session)
+        }
+
+        try {
+            val api = SupabaseClient.getApi(context)
+            val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
+            val profileRes = api.getProfile(
+                apiKey = anonKey,
+                bearerToken = "Bearer ${session.accessToken}",
+                idFilter = "eq.${session.profile.id}"
+            )
+
+            if (profileRes.isSuccessful && !profileRes.body().isNullOrEmpty()) {
+                val latestProfile = profileRes.body()!!.first()
+                if (!latestProfile.isActive) {
+                    sessionManager.clearSession()
+                    return@withContext AuthResult.Error("Account is deactivated")
+                }
+                val updatedSession = session.copy(
+                    accessToken = sessionManager.getAccessToken() ?: session.accessToken,
+                    profile = latestProfile
+                )
+                sessionManager.saveSession(updatedSession)
+                return@withContext AuthResult.Success(updatedSession)
+            } else if (profileRes.code() == 401) {
+                val refreshRes = refreshToken()
+                if (refreshRes.isSuccess) {
+                    return@withContext AuthResult.Success(refreshRes.getOrThrow())
+                } else {
+                    return@withContext AuthResult.Error("Session expired. Please log in again.")
+                }
+            }
+            return@withContext AuthResult.Success(session)
+        } catch (_: Exception) {
+            return@withContext AuthResult.Success(session)
+        }
     }
 
     suspend fun logout(): Boolean = withContext(Dispatchers.IO) {

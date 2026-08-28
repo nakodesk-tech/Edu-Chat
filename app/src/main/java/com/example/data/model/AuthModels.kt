@@ -135,6 +135,11 @@ data class SupabaseLoginRequest(
 )
 
 @JsonClass(generateAdapter = true)
+data class SupabaseRefreshTokenRequest(
+    @Json(name = "refresh_token") val refreshToken: String
+)
+
+@JsonClass(generateAdapter = true)
 data class SupabaseSignupRequest(
     @Json(name = "email") val email: String,
     @Json(name = "password") val password: String,

@@ -50,6 +50,14 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         val existingSession = repository.getActiveSession()
         if (existingSession != null && existingSession.profile.isActive) {
             _uiState.value = AuthUiState.Authenticated(existingSession)
+            viewModelScope.launch {
+                val result = repository.validateOrRefreshSession()
+                if (result is AuthResult.Success) {
+                    _uiState.value = AuthUiState.Authenticated(result.session)
+                } else if (result is AuthResult.Error && !repository.isUserLoggedIn()) {
+                    _uiState.value = AuthUiState.Idle
+                }
+            }
         } else {
             _uiState.value = AuthUiState.Idle
         }

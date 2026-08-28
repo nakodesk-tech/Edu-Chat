@@ -314,4 +314,30 @@ class AuthRepositoryTest {
         assertEquals("This account has been deactivated. Please contact your administrator.", (inactiveLogin as AuthResult.Error).message)
         assertFalse(authRepository.isUserLoggedIn())
     }
+
+    // 16. Refresh token updates tokens and preserves user profile
+    @Test
+    fun test_refresh_token_updates_tokens_and_preserves_profile() = runBlocking {
+        val loginRes = authRepository.login("admin@educhat.edu", "password123", UserRole.OFFICER_ADMIN)
+        assertTrue(loginRes is AuthResult.Success)
+        val initialSession = (loginRes as AuthResult.Success).session
+
+        val refreshResult = authRepository.refreshToken()
+        assertTrue("refreshToken should succeed", refreshResult.isSuccess)
+        val refreshedSession = refreshResult.getOrThrow()
+
+        assertEquals(initialSession.profile.id, refreshedSession.profile.id)
+        assertEquals(initialSession.profile.email, refreshedSession.profile.email)
+        assertEquals(initialSession.profile.role, refreshedSession.profile.role)
+        assertTrue(sessionManager.hasActiveSession())
+    }
+
+    // 17. Refresh token fails when no session exists
+    @Test
+    fun test_refresh_token_fails_when_no_session() = runBlocking {
+        sessionManager.clearSession()
+        val refreshResult = authRepository.refreshToken()
+        assertTrue(refreshResult.isFailure)
+        assertFalse(sessionManager.hasActiveSession())
+    }
 }

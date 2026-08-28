@@ -31,6 +31,14 @@ class SessionManager(context: Context) {
             .apply()
     }
 
+    fun updateTokens(newAccessToken: String, newRefreshToken: String?) {
+        val editor = prefs.edit().putString(KEY_ACCESS_TOKEN, newAccessToken)
+        if (!newRefreshToken.isNullOrBlank()) {
+            editor.putString(KEY_REFRESH_TOKEN, newRefreshToken)
+        }
+        editor.apply()
+    }
+
     fun getAccessToken(): String? {
         return prefs.getString(KEY_ACCESS_TOKEN, null)
     }

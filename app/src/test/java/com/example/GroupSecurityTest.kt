@@ -829,6 +829,9 @@ open class FakeSupabaseDatabaseEngine : SupabaseAuthApi {
 
     // Default implementations for remaining interface methods
     override suspend fun login(grantType: String, apiKey: String, request: SupabaseLoginRequest): Response<SupabaseTokenResponse> = Response.success(null)
+    override suspend fun refreshToken(grantType: String, apiKey: String, request: com.example.data.model.SupabaseRefreshTokenRequest): Response<SupabaseTokenResponse> = Response.success(
+        SupabaseTokenResponse(accessToken = "refreshed_access_token", refreshToken = "refreshed_token")
+    )
     override suspend fun signup(apiKey: String, request: SupabaseSignupRequest): Response<SupabaseTokenResponse> = Response.success(null)
     override suspend fun logout(apiKey: String, bearerToken: String): Response<Unit> = Response.success(Unit)
     override suspend fun getProfile(apiKey: String, bearerToken: String, idFilter: String, select: String): Response<List<UserProfile>> = Response.success(emptyList())
