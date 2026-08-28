@@ -27,6 +27,7 @@ data class ChatGroupUiState(
     val currentProfile: UserProfile? = null,
     val groups: List<Group> = emptyList(),
     val selectedGroup: Group? = null,
+    val activeChatGroup: Group? = null,
     val selectedGroupMembers: List<GroupMember> = emptyList(),
     val messages: List<ChatMessage> = emptyList(),
     val messageInput: String = "",
@@ -119,6 +120,71 @@ class ChatGroupViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun openChatGroup(group: Group) {
+        _uiState.update {
+            it.copy(
+                activeChatGroup = group,
+                selectedGroup = group,
+                showGroupDetailDialog = false,
+                messages = emptyList(),
+                messageInput = "",
+                errorMessage = null
+            )
+        }
+        loadGroupDetailsInternal(group.id)
+        loadMessages(group.id)
+    }
+
+    fun closeChatGroup() {
+        _uiState.update {
+            it.copy(
+                activeChatGroup = null,
+                selectedGroup = null,
+                selectedGroupMembers = emptyList(),
+                messages = emptyList(),
+                messageInput = "",
+                showGroupDetailDialog = false,
+                errorMessage = null
+            )
+        }
+    }
+
+    fun openGroupInfo() {
+        val group = _uiState.value.activeChatGroup ?: _uiState.value.selectedGroup ?: return
+        _uiState.update {
+            it.copy(
+                selectedGroup = group,
+                showGroupDetailDialog = true,
+                errorMessage = null
+            )
+        }
+        loadGroupDetailsInternal(group.id)
+    }
+
+    private fun loadGroupDetailsInternal(groupId: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isDetailLoading = true) }
+            val detailsRes = groupRepo.getGroupDetails(groupId)
+            if (detailsRes.isSuccess) {
+                val (enrichedGroup, members) = detailsRes.getOrThrow()
+                _uiState.update {
+                    it.copy(
+                        selectedGroup = enrichedGroup,
+                        activeChatGroup = if (it.activeChatGroup?.id == groupId) enrichedGroup else it.activeChatGroup,
+                        selectedGroupMembers = members,
+                        isDetailLoading = false
+                    )
+                }
+            } else {
+                _uiState.update {
+                    it.copy(
+                        isDetailLoading = false
+                    )
+                }
+            }
+        }
+    }
+
     fun openGroupDetail(group: Group) {
         viewModelScope.launch {
             _uiState.update {
@@ -135,6 +201,7 @@ class ChatGroupViewModel(application: Application) : AndroidViewModel(applicatio
                 _uiState.update {
                     it.copy(
                         selectedGroup = enrichedGroup,
+                        activeChatGroup = if (it.activeChatGroup?.id == group.id) enrichedGroup else it.activeChatGroup,
                         selectedGroupMembers = members,
                         isDetailLoading = false
                     )
@@ -154,8 +221,7 @@ class ChatGroupViewModel(application: Application) : AndroidViewModel(applicatio
         _uiState.update {
             it.copy(
                 showGroupDetailDialog = false,
-                selectedGroup = null,
-                selectedGroupMembers = emptyList(),
+                selectedGroup = it.activeChatGroup,
                 errorMessage = null
             )
         }
@@ -424,7 +490,12 @@ class ChatGroupViewModel(application: Application) : AndroidViewModel(applicatio
             if (res.isSuccess) {
                 val sentMessage = res.getOrThrow()
                 _uiState.update { state ->
-                    val updatedList = state.messages + sentMessage
+                    val enrichedMessage = if (sentMessage.senderProfile == null && state.currentProfile != null) {
+                        sentMessage.copy(senderProfile = state.currentProfile)
+                    } else {
+                        sentMessage
+                    }
+                    val updatedList = state.messages + enrichedMessage
                     state.copy(
                         isSendingMessage = false,
                         messageInput = "",

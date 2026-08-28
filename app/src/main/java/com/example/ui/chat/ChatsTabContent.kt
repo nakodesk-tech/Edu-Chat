@@ -103,124 +103,143 @@ fun ChatsTabContent(
         }
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // Top Bar Action Area
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = "चॅट्स (Chats)",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp,
-                        color = TextPrimary
-                    )
-                    Text(
-                        text = "${filteredGroups.size} गट उपलब्ध • GROUPS_BUILD_CHECK_001",
-                        fontSize = 12.sp,
-                        color = TextSecondary
-                    )
-                }
-
-                if (canCreateGroup) {
-                    Button(
-                        onClick = { viewModel.openCreateGroupDialog() },
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryIndigo),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                        modifier = Modifier.testTag("create_group_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.GroupAdd,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "+ नवीन गट तयार करा",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-
-            // Search Filter
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = { Text("गट शोधा...", fontSize = 13.sp) },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "शोधा",
-                        tint = TextSecondary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = PrimaryIndigo,
-                    unfocusedBorderColor = BorderSubtle
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("group_search_input")
-            )
-
-            // Group List or Empty State
-            if (uiState.isLoading) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = PrimaryIndigo)
-                }
-            } else if (filteredGroups.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    EmptyGroupsView(
-                        canCreateGroup = canCreateGroup,
-                        onCreateClick = { viewModel.openCreateGroupDialog() }
-                    )
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(bottom = 16.dp)
-                ) {
-                    items(filteredGroups, key = { it.id }) { group ->
-                        GroupCardItem(
-                            group = group,
-                            onClick = { viewModel.openGroupDetail(group) }
-                        )
-                    }
-                }
-            }
-        }
-
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier.align(Alignment.BottomCenter)
+    if (uiState.activeChatGroup != null) {
+        GroupChatScreen(
+            group = uiState.activeChatGroup!!,
+            messages = uiState.messages,
+            members = uiState.selectedGroupMembers,
+            currentUser = uiState.currentProfile,
+            messageInput = uiState.messageInput,
+            isLoading = uiState.isMessagesLoading,
+            isSending = uiState.isSendingMessage,
+            errorMessage = uiState.errorMessage,
+            onBackClick = { viewModel.closeChatGroup() },
+            onInfoClick = { viewModel.openGroupInfo() },
+            onMessageInputChange = { viewModel.setMessageInput(it) },
+            onSendMessage = { content -> viewModel.sendMessage(uiState.activeChatGroup!!.id, content) },
+            onRetryLoadMessages = { viewModel.loadMessages(uiState.activeChatGroup!!.id) },
+            modifier = modifier
         )
+    } else {
+        Box(modifier = modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Top Bar Action Area
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "चॅट्स (Chats)",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = "${filteredGroups.size} गट उपलब्ध",
+                            fontSize = 12.sp,
+                            color = TextSecondary
+                        )
+                    }
+
+                    if (canCreateGroup) {
+                        Button(
+                            onClick = { viewModel.openCreateGroupDialog() },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryIndigo),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                            modifier = Modifier.testTag("create_group_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.GroupAdd,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "+ नवीन गट तयार करा",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                // Search Filter
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("गट शोधा...", fontSize = 13.sp) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "शोधा",
+                            tint = TextSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = PrimaryIndigo,
+                        unfocusedBorderColor = BorderSubtle
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("group_search_input")
+                )
+
+                // Group List or Empty State
+                if (uiState.isLoading) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = PrimaryIndigo)
+                    }
+                } else if (filteredGroups.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        EmptyGroupsView(
+                            canCreateGroup = canCreateGroup,
+                            onCreateClick = { viewModel.openCreateGroupDialog() }
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(bottom = 16.dp)
+                    ) {
+                        items(filteredGroups, key = { it.id }) { group ->
+                            GroupCardItem(
+                                group = group,
+                                onClick = { viewModel.openChatGroup(group) }
+                            )
+                        }
+                    }
+                }
+            }
+
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
+        }
     }
 
     // Create Group Dialog
