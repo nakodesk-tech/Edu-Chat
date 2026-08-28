@@ -28,11 +28,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddBusiness
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Domain
 import androidx.compose.material.icons.filled.Edit
@@ -45,6 +47,7 @@ import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SupervisorAccount
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -279,7 +282,9 @@ fun OfficerAdminDashboardScreen(
                     OfficerAdminTab.SCHOOLS -> {
                         OfficerSchoolsTabContent(
                             schools = uiState.schools,
-                            onOpenDialog = { viewModel.openDialog(it) }
+                            onOpenDialog = { viewModel.openDialog(it) },
+                            onEditSchool = { school -> viewModel.openDialog(OfficerAdminDialog.EditSchool(school)) },
+                            onToggleStatus = { school -> viewModel.requestToggleSchoolStatus(school) }
                         )
                     }
                     OfficerAdminTab.MY_PROFILE -> {
@@ -623,14 +628,30 @@ fun OfficerUsersTabContent(
 @Composable
 fun OfficerSchoolsTabContent(
     schools: List<School>,
-    onOpenDialog: (OfficerAdminDialog) -> Unit
+    onOpenDialog: (OfficerAdminDialog) -> Unit,
+    onEditSchool: (School) -> Unit,
+    onToggleStatus: (School) -> Unit
 ) {
+    var searchQuery by remember { mutableStateOf("") }
+
+    val filteredSchools = remember(schools, searchQuery) {
+        if (searchQuery.isBlank()) {
+            schools
+        } else {
+            schools.filter { school ->
+                school.name.contains(searchQuery, ignoreCase = true) ||
+                        school.code.contains(searchQuery, ignoreCase = true) ||
+                        (school.email?.contains(searchQuery, ignoreCase = true) == true) ||
+                        (school.mobile?.contains(searchQuery, ignoreCase = true) == true)
+            }
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -644,12 +665,19 @@ fun OfficerSchoolsTabContent(
                     color = TextPrimary
                 )
             )
-            Text(
-                text = "${schools.size} शाळा",
-                style = MaterialTheme.typography.labelMedium.copy(
-                    color = TextSecondary
+            Surface(
+                color = PrimaryIndigoContainer,
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    text = "${schools.size} नोंदणीकृत शाळा",
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        color = PrimaryIndigo
+                    ),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                 )
-            )
+            }
         }
 
         Row(
@@ -677,6 +705,93 @@ fun OfficerSchoolsTabContent(
                 modifier = Modifier.weight(1f),
                 onClick = { onOpenDialog(OfficerAdminDialog.ManageSchools) }
             )
+        }
+
+        // Search in Tab
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            placeholder = { Text("शाळा, UDISE कोड, ई-मेल शोधा (Search...)") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = TextTertiary) },
+            trailingIcon = {
+                if (searchQuery.isNotBlank()) {
+                    IconButton(onClick = { searchQuery = "" }) {
+                        Icon(Icons.Default.Clear, contentDescription = "Clear search", tint = TextTertiary)
+                    }
+                }
+            },
+            singleLine = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("input_tab_search_schools")
+        )
+
+        // Schools List Section Header
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "नोंदणीकृत शाळांची यादी (${filteredSchools.size})",
+                style = MaterialTheme.typography.titleSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+            )
+            Button(
+                onClick = { onOpenDialog(OfficerAdminDialog.CreateSchool) },
+                colors = ButtonDefaults.buttonColors(containerColor = SecondaryGreen),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                modifier = Modifier.testTag("btn_tab_add_school")
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("शाळा जोडा (Add)", fontSize = 12.sp)
+            }
+        }
+
+        // Schools List
+        if (filteredSchools.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.School,
+                        contentDescription = null,
+                        tint = TextTertiary,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Text(
+                        text = if (searchQuery.isNotBlank()) "शोध परिणामांत कोणतीही शाळा आढळली नाही." else "कोणतीही शाळा उपलब्ध नाही. 'शाळा नोंदणी' वर क्लिक करून शाळा जोडा.",
+                        style = MaterialTheme.typography.bodyMedium.copy(color = TextSecondary),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(filteredSchools, key = { it.id }) { school ->
+                    SchoolItemCard(
+                        school = school,
+                        onEdit = { onEditSchool(school) },
+                        onToggleStatus = { onToggleStatus(school) }
+                    )
+                }
+            }
         }
     }
 }

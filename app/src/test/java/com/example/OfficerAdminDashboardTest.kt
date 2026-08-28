@@ -303,6 +303,64 @@ class OfficerAdminDashboardTest {
         assertTrue(badEmailResult.exceptionOrNull() is IllegalArgumentException)
     }
 
+    // 12c. Blank school name or blank UDISE code in School Registration is rejected
+    @Test
+    fun blank_name_or_code_in_school_registration_is_rejected() = runBlocking {
+        authRepository.login("admin@educhat.edu", "password123", UserRole.OFFICER_ADMIN)
+
+        val blankNameResult = officerAdminRepository.createSchool(
+            nameInput = "   ",
+            codeInput = "27299900002",
+            mobileInput = "9822000000",
+            emailInput = "school@educhat.edu",
+            addressInput = "Pune"
+        )
+        assertTrue("Blank school name must fail", blankNameResult.isFailure)
+        assertTrue(blankNameResult.exceptionOrNull() is IllegalArgumentException)
+
+        val blankCodeResult = officerAdminRepository.createSchool(
+            nameInput = "Valid School Name",
+            codeInput = "   ",
+            mobileInput = "9822000000",
+            emailInput = "school@educhat.edu",
+            addressInput = "Pune"
+        )
+        assertTrue("Blank school code must fail", blankCodeResult.isFailure)
+        assertTrue(blankCodeResult.exceptionOrNull() is IllegalArgumentException)
+    }
+
+    // 12d. Inactive Officer Admin cannot register a school
+    @Test
+    fun inactive_officer_admin_cannot_register_school() = runBlocking {
+        // Create an inactive officer admin session
+        sessionManager.saveSession(
+            AuthSession(
+                accessToken = "inactive_officer_token",
+                refreshToken = "inactive_refresh",
+                profile = UserProfile(
+                    id = "inactive-officer-id",
+                    fullName = "Inactive Officer",
+                    email = "inactive.officer@educhat.edu",
+                    role = "officer_admin",
+                    isActive = false,
+                    isPrimaryAdmin = false,
+                    schoolId = null
+                )
+            )
+        )
+
+        val result = officerAdminRepository.createSchool(
+            nameInput = "Unauthorized School",
+            codeInput = "27299900003",
+            mobileInput = "9822000000",
+            emailInput = "unauth@educhat.edu",
+            addressInput = "Pune"
+        )
+        assertTrue("Inactive Officer Admin must be rejected from creating school", result.isFailure)
+        assertTrue(result.exceptionOrNull() is SecurityException)
+        assertTrue(result.exceptionOrNull()!!.message!!.contains("deactivated", ignoreCase = true))
+    }
+
     // 13. Officer Admin can deactivate/reactivate School (soft deactivation)
     @Test
     fun officer_admin_can_deactivate_and_reactivate_school() = runBlocking {
