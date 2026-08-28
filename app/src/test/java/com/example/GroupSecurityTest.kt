@@ -530,6 +530,65 @@ class GroupSecurityTest {
         val sendBlank = groupRepository.sendGroupMessage(created.id, "   ")
         assertFalse(sendBlank.isSuccess)
     }
+
+    // 29. Teacher can add Officer Admin to teacher group even though Officer Admin schoolId is null
+    @Test
+    fun test29_teacherCanAddOfficerAdminToTeacherGroupEvenIfSchoolIdIsNull() = runBlocking {
+        setSession(puneTeacher1)
+        val group = groupRepository.createGroup("Science Dept", GroupType.TEACHER).getOrNull()!!
+        assertNull(officerAdmin.schoolId)
+
+        val addOfficerRes = groupRepository.addMember(group.id, officerAdmin.id)
+        assertTrue(addOfficerRes.isSuccess)
+        val member = addOfficerRes.getOrNull()
+        assertNotNull(member)
+        assertEquals(officerAdmin.id, member?.userId)
+        assertEquals("member", member?.roleInGroup)
+        assertTrue(member?.isActive == true)
+    }
+
+    // 30. Teacher can add same-school School Admin to teacher group
+    @Test
+    fun test30_teacherCanAddSameSchoolSchoolAdminToTeacherGroup() = runBlocking {
+        setSession(puneTeacher1)
+        val group = groupRepository.createGroup("Math Dept", GroupType.TEACHER).getOrNull()!!
+
+        val addAdminRes = groupRepository.addMember(group.id, puneSchoolAdmin.id)
+        assertTrue(addAdminRes.isSuccess)
+        assertEquals(puneSchoolAdmin.id, addAdminRes.getOrNull()?.userId)
+    }
+
+    // 31. Teacher cannot add different-school School Admin or Teacher
+    @Test
+    fun test31_teacherCannotAddDifferentSchoolUsersToTeacherGroup() = runBlocking {
+        setSession(puneTeacher1)
+        val group = groupRepository.createGroup("English Dept", GroupType.TEACHER).getOrNull()!!
+
+        val addMumbaiTeacherRes = groupRepository.addMember(group.id, mumbaiTeacher.id)
+        assertFalse(addMumbaiTeacherRes.isSuccess)
+    }
+
+    // 32. Inactive group membership is reactivated on addMember
+    @Test
+    fun test32_reactivateInactiveGroupMember() = runBlocking {
+        setSession(puneTeacher1)
+        val group = groupRepository.createGroup("History Club", GroupType.TEACHER).getOrNull()!!
+
+        // Add member
+        val add1 = groupRepository.addMember(group.id, puneTeacher2.id)
+        assertTrue(add1.isSuccess)
+
+        // Remove member (soft delete / is_active = false)
+        val removeRes = groupRepository.removeMember(group.id, puneTeacher2.id)
+        assertTrue(removeRes.isSuccess)
+
+        // Re-add member -> must reactivate
+        val addAgain = groupRepository.addMember(group.id, puneTeacher2.id)
+        assertTrue(addAgain.isSuccess)
+        val reactivated = addAgain.getOrNull()!!
+        assertTrue(reactivated.isActive)
+        assertEquals("member", reactivated.roleInGroup)
+    }
 }
 
 /**
@@ -682,10 +741,13 @@ open class FakeSupabaseDatabaseEngine : SupabaseAuthApi {
         val group = groups.firstOrNull { it.id == request.groupId && it.isActive }
             ?: return Response.error(404, "Group not found".toResponseBody("application/json".toMediaTypeOrNull()))
 
-        // Management authorization: only creator or group admin
+        // Management authorization: Caller must be Officer Admin OR active admin of the target group
         val callerMembership = groupMembers.firstOrNull { it.groupId == group.id && it.userId == caller.id && it.isActive }
-        if (group.createdBy != caller.id && callerMembership?.roleInGroup != "admin") {
-            return Response.error(403, "Access denied".toResponseBody("application/json".toMediaTypeOrNull()))
+        val isCallerOfficerAdmin = caller.role == "officer_admin"
+        val isCallerGroupAdmin = group.createdBy == caller.id || callerMembership?.roleInGroup == "admin"
+
+        if (!isCallerOfficerAdmin && !isCallerGroupAdmin) {
+            return Response.error(403, "Access denied: Only Officer Admin or active group admin can add members".toResponseBody("application/json".toMediaTypeOrNull()))
         }
 
         val targetUser = profiles.firstOrNull { it.id == request.userId && it.isActive }
@@ -693,18 +755,38 @@ open class FakeSupabaseDatabaseEngine : SupabaseAuthApi {
 
         // Group type rules
         if (group.groupType == "administrative") {
+            // Administrative group: officer_admin, school_admin, teacher allowed; student rejected
             if (targetUser.role == "student") {
                 return Response.error(400, "Students cannot be added to administrative groups".toResponseBody("application/json".toMediaTypeOrNull()))
             }
         } else if (group.groupType == "teacher") {
-            if (targetUser.schoolId != group.schoolId) {
+            // Teacher group:
+            // - Officer Admin: allowed even when target school_id IS NULL
+            // - School Admin: allowed only when target school_id = group.school_id
+            // - Teacher: allowed only when target school_id = group.school_id
+            // - Student: allowed only when target school_id = group.school_id
+            if (targetUser.role == "officer_admin") {
+                // Allowed even when target school_id IS NULL
+            } else if (targetUser.schoolId != group.schoolId) {
                 return Response.error(400, "Target user belongs to a different school".toResponseBody("application/json".toMediaTypeOrNull()))
             }
         }
 
-        // Duplicate check
-        if (groupMembers.any { it.groupId == group.id && it.userId == targetUser.id && it.isActive }) {
-            return Response.error(409, "User is already a member of this group".toResponseBody("application/json".toMediaTypeOrNull()))
+        // Duplicate check & reactivation with UNIQUE(group_id, user_id)
+        val existingIndex = groupMembers.indexOfFirst { it.groupId == group.id && it.userId == targetUser.id }
+        if (existingIndex != -1) {
+            val existing = groupMembers[existingIndex]
+            if (existing.isActive) {
+                return Response.error(409, "User is already a member of this group".toResponseBody("application/json".toMediaTypeOrNull()))
+            } else {
+                val reactivated = existing.copy(
+                    isActive = true,
+                    roleInGroup = "member",
+                    userProfile = targetUser
+                )
+                groupMembers[existingIndex] = reactivated
+                return Response.success(reactivated)
+            }
         }
 
         val member = GroupMember(

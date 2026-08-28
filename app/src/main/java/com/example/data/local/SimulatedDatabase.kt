@@ -543,20 +543,14 @@ object SimulatedDatabase {
             ?: return Result.failure(NoSuchElementException("गट आढळला नाही. (Group not found)"))
 
         // Authorization checks
-        if (group.groupType.equals("administrative", ignoreCase = true)) {
-            if (!caller.isOfficerAdmin) {
-                return Result.failure(
-                    SecurityException("केवळ Officer Admin प्रशासकीय गटात सदस्य जोडू शकतात. (Unauthorized group manager)")
-                )
-            }
-        } else if (group.groupType.equals("teacher", ignoreCase = true)) {
-            if (!caller.role.equals("teacher", ignoreCase = true) || group.createdBy != caller.id) {
-                return Result.failure(
-                    SecurityException("केवळ या गटाचे शिक्षक मालक सदस्य जोडू शकतात. (Unauthorized group manager)")
-                )
-            }
-        } else {
-            return Result.failure(SecurityException("अवैध गट प्रकार. (Invalid group type)"))
+        val callerMembership = groupMembers.firstOrNull { it.groupId == groupId && it.userId == callerId && it.isActive }
+        val isCallerOfficerAdmin = caller.isOfficerAdmin
+        val isCallerGroupAdmin = group.createdBy == caller.id || callerMembership?.roleInGroup == "admin" || callerMembership?.roleInGroup == "owner"
+
+        if (!isCallerOfficerAdmin && !isCallerGroupAdmin) {
+            return Result.failure(
+                SecurityException("केवळ Officer Admin किंवा या गटाचे Admin सदस्य जोडू शकतात. (Unauthorized group manager)")
+            )
         }
 
         val targetUser = findById(targetUserId)?.profile
@@ -575,15 +569,16 @@ object SimulatedDatabase {
                 )
             }
         } else if (group.groupType.equals("teacher", ignoreCase = true)) {
-            // Allowed: Teacher or Student belonging to the same school
-            if (!targetUser.role.equals("student", ignoreCase = true) && !targetUser.role.equals("teacher", ignoreCase = true)) {
+            // Teacher group:
+            // Officer Admin: allowed even when target school_id IS NULL.
+            // School Admin: allowed only when target school_id = group.school_id.
+            // Teacher: allowed only when target school_id = group.school_id.
+            // Student: allowed only when target school_id = group.school_id.
+            if (targetUser.isOfficerAdmin) {
+                // Officer Admin is allowed across all teacher groups regardless of null schoolId
+            } else if (targetUser.schoolId != group.schoolId) {
                 return Result.failure(
-                    SecurityException("शिक्षक गटात केवळ शिक्षक व विद्यार्थ्यांना जोडता येते. (Only teachers and students of the same school can be added to teacher groups)")
-                )
-            }
-            if (targetUser.schoolId != caller.schoolId) {
-                return Result.failure(
-                    SecurityException("शिक्षक फक्त स्वतःच्या शाळेतील सदस्यांना जोडू शकतात. (Teacher cannot add members from other schools)")
+                    SecurityException("शिक्षक फक्त स्वतःच्या शाळेतील सदस्यांना जोडू शकतात. (Target user belongs to a different school)")
                 )
             }
         }
