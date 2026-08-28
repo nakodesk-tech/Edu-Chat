@@ -124,7 +124,7 @@ fun ChatsTabContent(
                         color = TextPrimary
                     )
                     Text(
-                        text = "${filteredGroups.size} गट उपलब्ध",
+                        text = "${filteredGroups.size} गट उपलब्ध • GROUPS_BUILD_CHECK_001",
                         fontSize = 12.sp,
                         color = TextSecondary
                     )
