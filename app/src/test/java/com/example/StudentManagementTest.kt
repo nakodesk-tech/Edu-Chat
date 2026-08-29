@@ -145,6 +145,60 @@ class StudentManagementTest {
     }
 
     @Test
+    fun testStudentRegistrationValidation_BlankAcademicYear() = runBlocking {
+        val result = studentRepository.registerStudent(
+            fullName = "Test Student",
+            email = "valid.student@educhat.edu",
+            password = "password123",
+            mobile = null,
+            standard = "इयत्ता ९ वी",
+            schoolId = puneSchoolId,
+            academicYear = "   "
+        )
+        assertTrue("Registration with blank academic year should fail", result.isFailure)
+    }
+
+    @Test
+    fun testSchoolAdminCreateStudentRequest_RpcPayloadContract() {
+        val request = com.example.data.model.SchoolAdminCreateStudentRequest(
+            email = "student@test.com",
+            password = "password123",
+            fullName = "Student Name",
+            mobile = "9822112233",
+            standard = "10th",
+            section = "A",
+            academicYear = "2026-27"
+        )
+        assertEquals("student@test.com", request.email)
+        assertEquals("password123", request.password)
+        assertEquals("Student Name", request.fullName)
+        assertEquals("9822112233", request.mobile)
+        assertEquals("10th", request.standard)
+        assertEquals("A", request.section)
+        assertEquals("2026-27", request.academicYear)
+
+        val moshi = com.squareup.moshi.Moshi.Builder().build()
+        val adapter = moshi.adapter(com.example.data.model.SchoolAdminCreateStudentRequest::class.java)
+        val json = adapter.toJson(request)
+
+        assertTrue(json.contains("\"p_email\":\"student@test.com\""))
+        assertTrue(json.contains("\"p_password\":\"password123\""))
+        assertTrue(json.contains("\"p_full_name\":\"Student Name\""))
+        assertTrue(json.contains("\"p_mobile\":\"9822112233\""))
+        assertTrue(json.contains("\"p_standard\":\"10th\""))
+        assertTrue(json.contains("\"p_section\":\"A\""))
+        assertTrue(json.contains("\"p_academic_year\":\"2026-27\""))
+    }
+
+    @Test
+    fun testStudentStandardUtils_AcademicYears() {
+        val years = com.example.ui.students.StudentStandardUtils.ACADEMIC_YEARS
+        assertTrue(years.contains("2026-27"))
+        assertTrue(years.contains("2027-28"))
+        assertEquals("2026-27", com.example.ui.students.StudentStandardUtils.DEFAULT_ACADEMIC_YEAR)
+    }
+
+    @Test
     fun testGetStudentsList() = runBlocking {
         val listResult = studentRepository.getStudents(puneSchoolId)
         assertTrue("Get students should succeed", listResult.isSuccess)

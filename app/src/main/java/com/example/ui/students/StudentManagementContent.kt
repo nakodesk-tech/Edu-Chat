@@ -303,8 +303,8 @@ fun StudentManagementContent(
                     isLoading = uiState.isActionLoading,
                     errorMessage = uiState.actionErrorMessage,
                     onDismiss = { viewModel.dismissDialog() },
-                    onRegister = { name, email, pass, mobile, std, schId ->
-                        viewModel.registerStudent(name, email, pass, mobile, std, schId)
+                    onRegister = { name, email, pass, mobile, std, schId, academicYear ->
+                        viewModel.registerStudent(name, email, pass, mobile, std, schId, academicYear)
                     }
                 )
             }
@@ -818,7 +818,7 @@ fun RegisterStudentDialog(
     isLoading: Boolean,
     errorMessage: String?,
     onDismiss: () -> Unit,
-    onRegister: (fullName: String, email: String, password: String, mobile: String?, standard: String?, schoolId: String) -> Unit
+    onRegister: (fullName: String, email: String, password: String, mobile: String?, standard: String?, schoolId: String, academicYear: String) -> Unit
 ) {
     var fullName by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
@@ -826,6 +826,8 @@ fun RegisterStudentDialog(
     var confirmPassword by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var mobile by remember { mutableStateOf("") }
+    var selectedAcademicYear by remember { mutableStateOf(StudentStandardUtils.DEFAULT_ACADEMIC_YEAR) }
+    var academicYearDropdownExpanded by remember { mutableStateOf(false) }
     var selectedStandard by remember { mutableStateOf("10th") }
     var standardDropdownExpanded by remember { mutableStateOf(false) }
     var selectedSection by remember { mutableStateOf("A") }
@@ -839,7 +841,8 @@ fun RegisterStudentDialog(
             email.isNotBlank() &&
             password.length >= 6 &&
             password == confirmPassword &&
-            selectedSchoolId.isNotBlank()
+            selectedSchoolId.isNotBlank() &&
+            selectedAcademicYear.isNotBlank()
 
     AlertDialog(
         onDismissRequest = { if (!isLoading) onDismiss() },
@@ -883,6 +886,45 @@ fun RegisterStudentDialog(
                         .fillMaxWidth()
                         .testTag("input_student_fullname")
                 )
+
+                // Academic Year Dropdown
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    ExposedDropdownMenuBox(
+                        expanded = academicYearDropdownExpanded,
+                        onExpandedChange = { if (!isLoading) academicYearDropdownExpanded = it }
+                    ) {
+                        OutlinedTextField(
+                            value = selectedAcademicYear,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("शैक्षणिक वर्ष (Academic Year) *") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = academicYearDropdownExpanded) },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = SecondaryGreen,
+                                unfocusedBorderColor = BorderSubtle
+                            ),
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth()
+                                .testTag("select_student_academic_year")
+                        )
+                        ExposedDropdownMenu(
+                            expanded = academicYearDropdownExpanded,
+                            onDismissRequest = { academicYearDropdownExpanded = false }
+                        ) {
+                            StudentStandardUtils.ACADEMIC_YEARS.forEach { year ->
+                                DropdownMenuItem(
+                                    text = { Text("वर्ष $year", fontSize = 13.sp) },
+                                    onClick = {
+                                        selectedAcademicYear = year
+                                        academicYearDropdownExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
 
                 // Standard & Section 2 Dropdowns Row
                 Row(
@@ -1144,7 +1186,8 @@ fun RegisterStudentDialog(
                         password,
                         mobile.trim(),
                         StudentStandardUtils.formatStoredStandard(selectedStandard, selectedSection),
-                        selectedSchoolId
+                        selectedSchoolId,
+                        selectedAcademicYear.trim()
                     )
                 },
                 enabled = !isLoading && isFormValid,

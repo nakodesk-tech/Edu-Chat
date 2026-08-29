@@ -109,7 +109,8 @@ class StudentManagementViewModel @JvmOverloads constructor(
         password: String,
         mobile: String?,
         standard: String?,
-        schoolId: String
+        schoolId: String,
+        academicYear: String = StudentStandardUtils.DEFAULT_ACADEMIC_YEAR
     ) {
         viewModelScope.launch {
             _uiState.update { it.copy(isActionLoading = true, actionErrorMessage = null) }
@@ -119,7 +120,8 @@ class StudentManagementViewModel @JvmOverloads constructor(
                 password = password,
                 mobile = mobile,
                 standard = standard,
-                schoolId = schoolId
+                schoolId = schoolId,
+                academicYear = academicYear
             )
 
             if (res.isSuccess) {

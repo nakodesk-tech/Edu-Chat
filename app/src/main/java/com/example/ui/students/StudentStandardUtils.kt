@@ -27,6 +27,15 @@ object StudentStandardUtils {
         "F"
     )
 
+    val ACADEMIC_YEARS = listOf(
+        "2026-27",
+        "2027-28",
+        "2028-29",
+        "2029-30"
+    )
+
+    const val DEFAULT_ACADEMIC_YEAR = "2026-27"
+
     val FILTER_STANDARDS = listOf(
         "सर्व",
         "1st",

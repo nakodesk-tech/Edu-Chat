@@ -98,7 +98,8 @@ class StudentRepository(private val context: Context) {
         password: String,
         mobile: String?,
         standard: String?,
-        schoolId: String
+        schoolId: String,
+        academicYear: String = com.example.ui.students.StudentStandardUtils.DEFAULT_ACADEMIC_YEAR
     ): Result<UserProfile> = withContext(Dispatchers.IO) {
         val authResult = checkAuthorization()
         if (authResult.isFailure) {
@@ -111,6 +112,7 @@ class StudentRepository(private val context: Context) {
         val trimmedEmail = email.trim().lowercase()
         val trimmedMobile = mobile?.trim()?.ifBlank { null }
         val trimmedStandard = standard?.trim()?.ifBlank { null }
+        val trimmedAcademicYear = academicYear.trim()
         val effectiveSchoolId = if (callerProfile.isOfficerAdmin) {
             schoolId.trim()
         } else {
@@ -120,6 +122,10 @@ class StudentRepository(private val context: Context) {
         // Validation
         if (trimmedName.isBlank()) {
             return@withContext Result.failure(IllegalArgumentException("विद्यार्थ्याचे पूर्ण नाव प्रविष्ट करा. (Full name is required)"))
+        }
+
+        if (trimmedAcademicYear.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("शैक्षणिक वर्ष आवश्यक आहे. (Academic year is required)"))
         }
 
         if (trimmedEmail.isBlank() || !Patterns.EMAIL_ADDRESS.matcher(trimmedEmail).matches()) {
@@ -188,7 +194,8 @@ class StudentRepository(private val context: Context) {
                             fullName = trimmedName,
                             mobile = trimmedMobile,
                             standard = parsedStd,
-                            section = parsedSec
+                            section = parsedSec,
+                            academicYear = trimmedAcademicYear
                         )
                     )
 
@@ -211,7 +218,8 @@ class StudentRepository(private val context: Context) {
                 password = password,
                 mobile = trimmedMobile,
                 standard = trimmedStandard,
-                schoolId = effectiveSchoolId
+                schoolId = effectiveSchoolId,
+                academicYear = trimmedAcademicYear
             )
         }
     }

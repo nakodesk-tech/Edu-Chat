@@ -106,12 +106,13 @@ data class SchoolAdminCreateTeacherRequest(
 
 @JsonClass(generateAdapter = true)
 data class SchoolAdminCreateStudentRequest(
-    @Json(name = "email") val email: String,
-    @Json(name = "password") val password: String,
-    @Json(name = "full_name") val fullName: String,
-    @Json(name = "mobile") val mobile: String? = null,
-    @Json(name = "standard") val standard: String? = null,
-    @Json(name = "section") val section: String? = null
+    @Json(name = "p_email") val email: String,
+    @Json(name = "p_password") val password: String,
+    @Json(name = "p_full_name") val fullName: String,
+    @Json(name = "p_mobile") val mobile: String? = null,
+    @Json(name = "p_standard") val standard: String? = null,
+    @Json(name = "p_section") val section: String? = null,
+    @Json(name = "p_academic_year") val academicYear: String? = null
 )
 
 @JsonClass(generateAdapter = true)

@@ -456,13 +456,19 @@ object SimulatedDatabase {
         password: String,
         mobile: String?,
         standard: String?,
-        schoolId: String
+        schoolId: String,
+        academicYear: String = "2026-27"
     ): Result<UserProfile> {
         val trimmedEmail = email.trim().lowercase()
         val trimmedName = fullName.trim()
+        val trimmedAcademicYear = academicYear.trim()
 
         if (trimmedName.isBlank()) {
             return Result.failure(IllegalArgumentException("विद्यार्थ्याचे पूर्ण नाव आवश्यक आहे. (Full name is required)"))
+        }
+
+        if (trimmedAcademicYear.isBlank()) {
+            return Result.failure(IllegalArgumentException("शैक्षणिक वर्ष आवश्यक आहे. (Academic year is required)"))
         }
 
         if (trimmedEmail.isBlank() || !android.util.Patterns.EMAIL_ADDRESS.matcher(trimmedEmail).matches()) {
