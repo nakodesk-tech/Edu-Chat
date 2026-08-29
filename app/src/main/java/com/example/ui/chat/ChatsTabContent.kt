@@ -261,7 +261,7 @@ fun ChatsTabContent(
             group = uiState.selectedGroup!!,
             members = uiState.selectedGroupMembers,
             currentUser = uiState.currentProfile,
-            isLoading = uiState.isDetailLoading,
+            isLoading = uiState.isDetailLoading || uiState.isActionLoading,
             errorMessage = uiState.errorMessage,
             onDismiss = { viewModel.closeGroupDetail() },
             onOpenAddMember = { viewModel.openAddMemberDialog() },
