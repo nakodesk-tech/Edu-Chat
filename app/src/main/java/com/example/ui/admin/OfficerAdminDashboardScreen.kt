@@ -82,6 +82,11 @@ import androidx.compose.material3.TextButton
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.chat.ChatGroupViewModel
 import com.example.ui.chat.ChatsTabContent
+import com.example.ui.users.RegisteredUsersContent
+import com.example.ui.users.RegisteredUserDetailDialog
+import com.example.ui.users.EditUserDialog
+import com.example.ui.users.ConfirmToggleUserStatusDialog
+import com.example.ui.users.ConfirmDeleteUserDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -275,8 +280,10 @@ fun OfficerAdminDashboardScreen(
                     }
                     OfficerAdminTab.USERS -> {
                         OfficerUsersTabContent(
-                            profile = uiState.profile,
-                            onOpenDialog = { viewModel.openDialog(it) }
+                            uiState = uiState,
+                            onOpenDialog = { viewModel.openDialog(it) },
+                            onUserClick = { user -> viewModel.selectUserForDetail(user) },
+                            onRefresh = { viewModel.loadUsers() }
                         )
                     }
                     OfficerAdminTab.SCHOOLS -> {
@@ -373,7 +380,54 @@ fun OfficerAdminDashboardScreen(
                     }
                 )
             }
+            is OfficerAdminDialog.EditUser -> {
+                EditUserDialog(
+                    user = dialog.user,
+                    isLoading = uiState.isActionLoading,
+                    errorMessage = uiState.errorMessage,
+                    onDismiss = { viewModel.closeDialog() },
+                    onSave = { fullName, mobile ->
+                        viewModel.updateUser(
+                            userId = dialog.user.id,
+                            fullName = fullName,
+                            mobile = mobile,
+                            role = dialog.user.userRole,
+                            isActive = dialog.user.isActive,
+                            onSuccess = { }
+                        )
+                    }
+                )
+            }
+            is OfficerAdminDialog.ConfirmToggleUserStatus -> {
+                ConfirmToggleUserStatusDialog(
+                    user = dialog.user,
+                    isLoading = uiState.isActionLoading,
+                    onDismiss = { viewModel.closeDialog() },
+                    onConfirm = { targetStatus ->
+                        viewModel.toggleUserStatus(dialog.user.id, targetStatus) { }
+                    }
+                )
+            }
+            is OfficerAdminDialog.ConfirmDeleteUser -> {
+                ConfirmDeleteUserDialog(
+                    user = dialog.user,
+                    isLoading = uiState.isActionLoading,
+                    onDismiss = { viewModel.closeDialog() },
+                    onConfirm = {
+                        viewModel.deleteUser(dialog.user.id) { }
+                    }
+                )
+            }
             OfficerAdminDialog.None -> { /* No dialog active */ }
+        }
+
+        // Active User Detail Dialog
+        uiState.selectedUserForDetail?.let { user ->
+            RegisteredUserDetailDialog(
+                user = user,
+                schoolName = user.schoolId?.let { uiState.schoolsMap[it] },
+                onDismiss = { viewModel.selectUserForDetail(null) }
+            )
         }
     }
 }
@@ -578,51 +632,24 @@ private fun OfficerDashboardTilesGrid(
 
 @Composable
 fun OfficerUsersTabContent(
-    profile: UserProfile?,
-    onOpenDialog: (OfficerAdminDialog) -> Unit
+    uiState: OfficerAdminDashboardUiState,
+    onOpenDialog: (OfficerAdminDialog) -> Unit,
+    onUserClick: (UserProfile) -> Unit,
+    onRefresh: () -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Text(
-            text = "वापरकर्ते व्यवस्थापन (User Management)",
-            style = MaterialTheme.typography.titleMedium.copy(
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary
-            )
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            DashboardTile(
-                title = "अधिकारी नोंदणी",
-                subtitle = "नवीन अधिकारी जोडा",
-                icon = Icons.Default.PersonAdd,
-                iconTint = PrimaryIndigo,
-                containerColor = PrimaryIndigoContainer,
-                testTag = "tile_officer_admin_registration",
-                modifier = Modifier.weight(1f),
-                onClick = { onOpenDialog(OfficerAdminDialog.CreateOfficerAdmin) }
-            )
-
-            DashboardTile(
-                title = "शाळा प्रशासक नोंदणी",
-                subtitle = "शाळेचा प्रशासक जोडा",
-                icon = Icons.Default.SupervisorAccount,
-                iconTint = AccentAmber,
-                containerColor = AccentAmberContainer,
-                testTag = "tile_school_admin_registration",
-                modifier = Modifier.weight(1f),
-                onClick = { onOpenDialog(OfficerAdminDialog.CreateSchoolAdmin) }
-            )
-        }
-    }
+    RegisteredUsersContent(
+        users = uiState.users,
+        schoolsMap = uiState.schoolsMap,
+        isLoading = uiState.isUsersLoading,
+        errorMessage = uiState.usersErrorMessage,
+        onRefresh = onRefresh,
+        onUserClick = onUserClick,
+        onEditUser = { user -> onOpenDialog(OfficerAdminDialog.EditUser(user)) },
+        onToggleUserStatus = { user -> onOpenDialog(OfficerAdminDialog.ConfirmToggleUserStatus(user)) },
+        onDeleteUser = { user -> onOpenDialog(OfficerAdminDialog.ConfirmDeleteUser(user)) },
+        onOpenOfficerAdminRegistration = { onOpenDialog(OfficerAdminDialog.CreateOfficerAdmin) },
+        onOpenSchoolAdminRegistration = { onOpenDialog(OfficerAdminDialog.CreateSchoolAdmin) }
+    )
 }
 
 @Composable

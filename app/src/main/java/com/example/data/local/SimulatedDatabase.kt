@@ -196,6 +196,19 @@ object SimulatedDatabase {
     }
 
     @Synchronized
+    fun deleteUser(id: String): Result<Boolean> {
+        val user = findById(id) ?: return Result.failure(NoSuchElementException("User not found."))
+        if (user.profile.isPrimaryAdmin) {
+            return Result.failure(SecurityException("Primary Officer Admin cannot be deleted."))
+        }
+        // Remove from group memberships
+        groupMembers.removeIf { it.userId == id }
+        // Remove from users
+        val removed = users.removeIf { it.profile.id == id }
+        return if (removed) Result.success(true) else Result.failure(NoSuchElementException("User not found."))
+    }
+
+    @Synchronized
     fun getAllSchools(): List<School> {
         return schools.toList()
     }

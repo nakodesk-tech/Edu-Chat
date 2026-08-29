@@ -174,7 +174,8 @@ class AdminUserRepository(private val context: Context) {
         userId: String,
         fullNameInput: String,
         role: UserRole,
-        isActive: Boolean
+        isActive: Boolean,
+        mobileInput: String? = null
     ): Result<UserProfile> = withContext(Dispatchers.IO) {
         val sessionResult = verifyAdminSession()
         if (sessionResult.isFailure) {
@@ -243,6 +244,7 @@ class AdminUserRepository(private val context: Context) {
             val updated = SimulatedDatabase.updateProfile(userId) { existing ->
                 existing.copy(
                     fullName = fullName,
+                    mobile = mobileInput?.trim()?.ifBlank { null } ?: existing.mobile,
                     role = role.dbValue,
                     isActive = isActive,
                     updatedAt = timestamp
@@ -254,6 +256,55 @@ class AdminUserRepository(private val context: Context) {
             } else {
                 Result.failure(IllegalStateException("User record not found."))
             }
+        }
+    }
+
+    /**
+     * Deletes a user safely (with checks against self-deletion or primary admin deletion).
+     */
+    suspend fun deleteUser(userId: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        val sessionResult = verifyAdminSession()
+        if (sessionResult.isFailure) {
+            return@withContext Result.failure(sessionResult.exceptionOrNull()!!)
+        }
+        val currentSession = sessionResult.getOrNull()!!
+
+        // Security Guard: Cannot delete self
+        if (userId == currentSession.profile.id) {
+            return@withContext Result.failure(SecurityException("Admins cannot delete their own administrator account."))
+        }
+
+        // Security Guard: Primary Officer Admin cannot be deleted
+        val targetUser = if (SupabaseConfig.isConfigured(context)) null else SimulatedDatabase.findById(userId)?.profile
+        if (targetUser != null && (targetUser.isPrimaryAdmin || targetUser.role.equals("officer_admin", ignoreCase = true))) {
+            return@withContext Result.failure(SecurityException("Officer Admin accounts cannot be deleted."))
+        }
+
+        if (SupabaseConfig.isConfigured(context)) {
+            try {
+                val api = SupabaseClient.getApi(context)
+                val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
+                val response = api.adminToggleStatusRpc(
+                    apiKey = anonKey,
+                    bearerToken = "Bearer ${currentSession.accessToken}",
+                    request = AdminToggleStatusRequest(
+                        userId = userId,
+                        isActive = false
+                    )
+                )
+
+                if (response.isSuccessful) {
+                    Result.success(true)
+                } else {
+                    val rawError = response.errorBody()?.string()
+                    val msg = SupabaseClient.parseError(rawError) ?: "Failed to remove user."
+                    Result.failure(Exception(msg))
+                }
+            } catch (e: Exception) {
+                Result.failure(Exception("Failed to remove user: ${e.localizedMessage ?: "Network error"}"))
+            }
+        } else {
+            SimulatedDatabase.deleteUser(userId)
         }
     }
 

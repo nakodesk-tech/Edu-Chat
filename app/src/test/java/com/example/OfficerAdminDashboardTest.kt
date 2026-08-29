@@ -469,4 +469,88 @@ class OfficerAdminDashboardTest {
         assertEquals("admin@educhat.edu", profile2.email)
         assertEquals("officer_admin", profile2.role)
     }
+
+    // 19. Officer Admin can retrieve registered users list with all roles
+    @Test
+    fun officer_admin_can_retrieve_registered_users_list() = runBlocking {
+        val loginResult = authRepository.login("admin@educhat.edu", "password123", UserRole.OFFICER_ADMIN)
+        assertTrue(loginResult is AuthResult.Success)
+
+        val adminUserRepo = com.example.data.repository.AdminUserRepository(context)
+        val usersResult = adminUserRepo.getUsers()
+        assertTrue("Admin can retrieve all registered users", usersResult.isSuccess)
+        val users = usersResult.getOrNull()!!
+        assertTrue("User list should not be empty", users.isNotEmpty())
+
+        // Verify users of different roles exist
+        assertTrue("Should have officer admin", users.any { it.role.equals("officer_admin", ignoreCase = true) })
+        assertTrue("Should have teacher", users.any { it.role.equals("teacher", ignoreCase = true) })
+        assertTrue("Should have student", users.any { it.role.equals("student", ignoreCase = true) })
+    }
+
+    // 20. Officer Admin can update user details
+    @Test
+    fun officer_admin_can_update_user_details() = runBlocking {
+        authRepository.login("admin@educhat.edu", "password123", UserRole.OFFICER_ADMIN)
+        val adminUserRepo = com.example.data.repository.AdminUserRepository(context)
+
+        // Find teacher user to update
+        val users = adminUserRepo.getUsers().getOrNull()!!
+        val teacherUser = users.first { it.role.equals("teacher", ignoreCase = true) }
+
+        val updateResult = adminUserRepo.updateUser(
+            userId = teacherUser.id,
+            fullNameInput = "Updated Teacher Name",
+            role = UserRole.TEACHER,
+            isActive = true,
+            mobileInput = "9822000000"
+        )
+        assertTrue("Update user succeeds", updateResult.isSuccess)
+        val updated = updateResult.getOrNull()!!
+        assertEquals("Updated Teacher Name", updated.fullName)
+        assertEquals("9822000000", updated.mobile)
+    }
+
+    // 21. Officer Admin can toggle user active/inactive status
+    @Test
+    fun officer_admin_can_toggle_user_status() = runBlocking {
+        authRepository.login("admin@educhat.edu", "password123", UserRole.OFFICER_ADMIN)
+        val adminUserRepo = com.example.data.repository.AdminUserRepository(context)
+
+        val users = adminUserRepo.getUsers().getOrNull()!!
+        val studentUser = users.first { it.role.equals("student", ignoreCase = true) }
+
+        // Deactivate
+        val deactResult = adminUserRepo.deactivateUser(studentUser.id)
+        assertTrue("Deactivation succeeds", deactResult.isSuccess)
+        val deactivated = deactResult.getOrNull()!!
+        assertFalse(deactivated.isActive)
+
+        // Reactivate
+        val reactResult = adminUserRepo.reactivateUser(studentUser.id)
+        assertTrue("Reactivation succeeds", reactResult.isSuccess)
+        val reactivated = reactResult.getOrNull()!!
+        assertTrue(reactivated.isActive)
+    }
+
+    // 22. Officer Admin can delete non-primary user and cannot delete self
+    @Test
+    fun officer_admin_user_deletion_safety() = runBlocking {
+        val loginResult = authRepository.login("admin@educhat.edu", "password123", UserRole.OFFICER_ADMIN)
+        val session = (loginResult as AuthResult.Success).session
+        val adminUserRepo = com.example.data.repository.AdminUserRepository(context)
+
+        // Attempting to delete own account must fail
+        val selfDeleteResult = adminUserRepo.deleteUser(session.profile.id)
+        assertTrue("Self deletion must be rejected", selfDeleteResult.isFailure)
+
+        // Deleting a non-admin user succeeds
+        val users = adminUserRepo.getUsers().getOrNull()!!
+        val target = users.first { it.role.equals("student", ignoreCase = true) }
+        val deleteResult = adminUserRepo.deleteUser(target.id)
+        assertTrue("Deleting non-admin user succeeds", deleteResult.isSuccess)
+
+        val remainingUsers = adminUserRepo.getUsers().getOrNull()!!
+        assertFalse("User should no longer exist in list", remainingUsers.any { it.id == target.id })
+    }
 }

@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.model.School
 import com.example.data.model.UserProfile
+import com.example.data.repository.AdminUserRepository
 import com.example.data.repository.AuthRepository
 import com.example.data.repository.OfficerAdminRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,22 +30,33 @@ sealed class OfficerAdminDialog {
     object MyProfile : OfficerAdminDialog()
     data class EditSchool(val school: School) : OfficerAdminDialog()
     data class ConfirmDeactivateSchool(val school: School, val staffCount: Int) : OfficerAdminDialog()
+    data class EditUser(val user: UserProfile) : OfficerAdminDialog()
+    data class ConfirmToggleUserStatus(val user: UserProfile) : OfficerAdminDialog()
+    data class ConfirmDeleteUser(val user: UserProfile) : OfficerAdminDialog()
 }
 
 data class OfficerAdminDashboardUiState(
     val selectedTab: OfficerAdminTab = OfficerAdminTab.CHATS,
     val isLoading: Boolean = false,
     val isActionLoading: Boolean = false,
+    val isUsersLoading: Boolean = false,
     val profile: UserProfile? = null,
     val schools: List<School> = emptyList(),
     val activeSchools: List<School> = emptyList(),
+    val users: List<UserProfile> = emptyList(),
+    val selectedUserForDetail: UserProfile? = null,
     val currentDialog: OfficerAdminDialog = OfficerAdminDialog.None,
     val snackbarMessage: String? = null,
-    val errorMessage: String? = null
-)
+    val errorMessage: String? = null,
+    val usersErrorMessage: String? = null
+) {
+    val schoolsMap: Map<String, String>
+        get() = schools.associate { it.id to it.name }
+}
 
 class OfficerAdminDashboardViewModel(application: Application) : AndroidViewModel(application) {
     private val officerRepo = OfficerAdminRepository(application)
+    private val adminUserRepo = AdminUserRepository(application)
     private val authRepo = AuthRepository(application)
 
     private val _uiState = MutableStateFlow(OfficerAdminDashboardUiState())
@@ -80,11 +92,44 @@ class OfficerAdminDashboardViewModel(application: Application) : AndroidViewMode
                     activeSchools = schoolsList.filter { s -> s.isActive }
                 )
             }
+
+            // Also load registered users
+            loadUsers()
         }
+    }
+
+    fun loadUsers() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isUsersLoading = true, usersErrorMessage = null) }
+            val usersResult = adminUserRepo.getUsers()
+            if (usersResult.isSuccess) {
+                _uiState.update {
+                    it.copy(
+                        isUsersLoading = false,
+                        users = usersResult.getOrNull() ?: emptyList(),
+                        usersErrorMessage = null
+                    )
+                }
+            } else {
+                _uiState.update {
+                    it.copy(
+                        isUsersLoading = false,
+                        usersErrorMessage = usersResult.exceptionOrNull()?.message ?: "वापरकर्त्यांची यादी लोड करता आली नाही."
+                    )
+                }
+            }
+        }
+    }
+
+    fun selectUserForDetail(user: UserProfile?) {
+        _uiState.update { it.copy(selectedUserForDetail = user) }
     }
 
     fun selectTab(tab: OfficerAdminTab) {
         _uiState.update { it.copy(selectedTab = tab, errorMessage = null) }
+        if (tab == OfficerAdminTab.USERS && _uiState.value.users.isEmpty()) {
+            loadUsers()
+        }
     }
 
     fun openDialog(dialog: OfficerAdminDialog) {
@@ -126,6 +171,7 @@ class OfficerAdminDashboardViewModel(application: Application) : AndroidViewMode
                     )
                 }
                 closeDialog()
+                loadUsers()
                 onSuccess()
             } else {
                 _uiState.update {
@@ -167,6 +213,7 @@ class OfficerAdminDashboardViewModel(application: Application) : AndroidViewMode
                     )
                 }
                 closeDialog()
+                loadUsers()
                 onSuccess()
             } else {
                 _uiState.update {
@@ -384,6 +431,109 @@ class OfficerAdminDashboardViewModel(application: Application) : AndroidViewMode
                     it.copy(
                         isActionLoading = false,
                         errorMessage = result.exceptionOrNull()?.message ?: "प्रोफाइल अद्यतन अयशस्वी झाले."
+                    )
+                }
+            }
+        }
+    }
+
+    fun updateUser(
+        userId: String,
+        fullName: String,
+        mobile: String,
+        role: com.example.data.model.UserRole,
+        isActive: Boolean,
+        onSuccess: () -> Unit
+    ) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isActionLoading = true, errorMessage = null) }
+            val result = adminUserRepo.updateUser(
+                userId = userId,
+                fullNameInput = fullName,
+                role = role,
+                isActive = isActive,
+                mobileInput = mobile
+            )
+
+            if (result.isSuccess) {
+                _uiState.update {
+                    it.copy(
+                        isActionLoading = false,
+                        snackbarMessage = "वापरकर्त्याची माहिती यशस्वीरित्या अद्यतनित केली!"
+                    )
+                }
+                closeDialog()
+                loadUsers()
+                onSuccess()
+            } else {
+                _uiState.update {
+                    it.copy(
+                        isActionLoading = false,
+                        errorMessage = result.exceptionOrNull()?.message ?: "माहिती अद्यतनित करता आली नाही."
+                    )
+                }
+            }
+        }
+    }
+
+    fun toggleUserStatus(
+        userId: String,
+        targetStatus: Boolean,
+        onSuccess: () -> Unit
+    ) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isActionLoading = true, errorMessage = null) }
+            val result = if (targetStatus) {
+                adminUserRepo.reactivateUser(userId)
+            } else {
+                adminUserRepo.deactivateUser(userId)
+            }
+
+            if (result.isSuccess) {
+                val statusText = if (targetStatus) "सक्रिय" else "निष्क्रीय"
+                _uiState.update {
+                    it.copy(
+                        isActionLoading = false,
+                        snackbarMessage = "वापरकर्ता यशस्वीरित्या $statusText करण्यात आला!"
+                    )
+                }
+                closeDialog()
+                loadUsers()
+                onSuccess()
+            } else {
+                _uiState.update {
+                    it.copy(
+                        isActionLoading = false,
+                        errorMessage = result.exceptionOrNull()?.message ?: "स्थिती बदलता आली नाही."
+                    )
+                }
+            }
+        }
+    }
+
+    fun deleteUser(
+        userId: String,
+        onSuccess: () -> Unit
+    ) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isActionLoading = true, errorMessage = null) }
+            val result = adminUserRepo.deleteUser(userId)
+
+            if (result.isSuccess) {
+                _uiState.update {
+                    it.copy(
+                        isActionLoading = false,
+                        snackbarMessage = "वापरकर्ता यशस्वीरित्या काढून टाकण्यात आला!"
+                    )
+                }
+                closeDialog()
+                loadUsers()
+                onSuccess()
+            } else {
+                _uiState.update {
+                    it.copy(
+                        isActionLoading = false,
+                        errorMessage = result.exceptionOrNull()?.message ?: "वापरकर्ता काढून टाकता आला नाही."
                     )
                 }
             }
