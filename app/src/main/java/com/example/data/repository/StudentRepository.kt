@@ -7,6 +7,7 @@ import com.example.data.local.SimulatedDatabase
 import com.example.data.model.AuthSession
 import com.example.data.model.OfficerAdminCreateUserRequest
 import com.example.data.model.School
+import com.example.data.model.SchoolAdminCreateStudentRequest
 import com.example.data.model.UserProfile
 import com.example.data.remote.SupabaseClient
 import com.example.data.remote.SupabaseConfig
@@ -174,54 +175,28 @@ class StudentRepository(private val context: Context) {
                         Result.failure(Exception(msg))
                     }
                 } else {
-                    // Active TEACHER or SCHOOL_ADMIN creating student within their authorized school
-                    val signupResponse = api.signup(
+                    // Active TEACHER or SCHOOL_ADMIN creating student within their authorized school via school_admin_create_student RPC
+                    val parsedStd = com.example.ui.students.StudentStandardUtils.parseStandard(trimmedStandard) ?: trimmedStandard
+                    val parsedSec = com.example.ui.students.StudentStandardUtils.parseSection(trimmedStandard)
+
+                    val response = api.schoolAdminCreateStudentRpc(
                         apiKey = anonKey,
-                        request = com.example.data.model.SupabaseSignupRequest(
+                        bearerToken = "Bearer ${currentSession.accessToken}",
+                        request = SchoolAdminCreateStudentRequest(
                             email = trimmedEmail,
                             password = password,
-                            data = mapOf(
-                                "full_name" to trimmedName,
-                                "role" to "student",
-                                "school_id" to effectiveSchoolId
-                            )
+                            fullName = trimmedName,
+                            mobile = trimmedMobile,
+                            standard = parsedStd,
+                            section = parsedSec
                         )
                     )
 
-                    if (signupResponse.isSuccessful && signupResponse.body() != null) {
-                        val user = signupResponse.body()!!.user
-                        val newUserId = user?.id ?: java.util.UUID.randomUUID().toString()
-
-                        val updates = mutableMapOf<String, Any?>(
-                            "full_name" to trimmedName,
-                            "role" to "student",
-                            "school_id" to effectiveSchoolId,
-                            "is_active" to true
-                        )
-                        if (!trimmedMobile.isNullOrBlank()) updates["mobile"] = trimmedMobile
-                        if (!trimmedStandard.isNullOrBlank()) updates["standard"] = trimmedStandard
-
-                        api.patchProfile(
-                            apiKey = anonKey,
-                            bearerToken = "Bearer ${currentSession.accessToken}",
-                            idFilter = "eq.$newUserId",
-                            updates = updates
-                        )
-
-                        Result.success(
-                            UserProfile(
-                                id = newUserId,
-                                fullName = trimmedName,
-                                email = trimmedEmail,
-                                mobile = trimmedMobile,
-                                standard = trimmedStandard,
-                                role = "student",
-                                isActive = true,
-                                schoolId = effectiveSchoolId
-                            )
-                        )
+                    if (response.isSuccessful && response.body() != null) {
+                        val created = response.body()!!
+                        Result.success(created)
                     } else {
-                        val rawError = signupResponse.errorBody()?.string()
+                        val rawError = response.errorBody()?.string()
                         val msg = SupabaseClient.parseError(rawError) ?: "विद्यार्थी नोंदणी अयशस्वी झाली."
                         Result.failure(Exception(msg))
                     }

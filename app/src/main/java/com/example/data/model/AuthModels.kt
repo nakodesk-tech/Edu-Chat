@@ -105,6 +105,16 @@ data class SchoolAdminCreateTeacherRequest(
 )
 
 @JsonClass(generateAdapter = true)
+data class SchoolAdminCreateStudentRequest(
+    @Json(name = "email") val email: String,
+    @Json(name = "password") val password: String,
+    @Json(name = "full_name") val fullName: String,
+    @Json(name = "mobile") val mobile: String? = null,
+    @Json(name = "standard") val standard: String? = null,
+    @Json(name = "section") val section: String? = null
+)
+
+@JsonClass(generateAdapter = true)
 data class SchoolAdminUpdateTeacherRequest(
     @Json(name = "teacher_id") val teacherId: String,
     @Json(name = "full_name") val fullName: String,
@@ -139,6 +149,20 @@ data class SupabaseAuthUser(
     @Json(name = "created_at") val createdAt: String? = null,
     @Json(name = "updated_at") val updatedAt: String? = null
 )
+
+@JsonClass(generateAdapter = true)
+data class SupabaseSignupResponse(
+    @Json(name = "id") val id: String? = null,
+    @Json(name = "email") val email: String? = null,
+    @Json(name = "access_token") val accessToken: String? = null,
+    @Json(name = "token_type") val tokenType: String? = null,
+    @Json(name = "expires_in") val expiresIn: Long? = null,
+    @Json(name = "refresh_token") val refreshToken: String? = null,
+    @Json(name = "user") val user: SupabaseAuthUser? = null
+) {
+    val effectiveUserId: String?
+        get() = user?.id ?: id
+}
 
 @JsonClass(generateAdapter = true)
 data class SupabaseTokenResponse(

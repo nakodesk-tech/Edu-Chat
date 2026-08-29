@@ -18,6 +18,7 @@ import com.example.data.model.GroupType
 import com.example.data.model.OfficerAdminCreateUserRequest
 import com.example.data.model.RemoveGroupMemberRequest
 import com.example.data.model.School
+import com.example.data.model.SchoolAdminCreateStudentRequest
 import com.example.data.model.SchoolAdminCreateTeacherRequest
 import com.example.data.model.SchoolAdminUpdateTeacherRequest
 import com.example.data.model.SendGroupMessageRequest
@@ -832,7 +833,7 @@ open class FakeSupabaseDatabaseEngine : SupabaseAuthApi {
     override suspend fun refreshToken(grantType: String, apiKey: String, request: com.example.data.model.SupabaseRefreshTokenRequest): Response<SupabaseTokenResponse> = Response.success(
         SupabaseTokenResponse(accessToken = "refreshed_access_token", refreshToken = "refreshed_token")
     )
-    override suspend fun signup(apiKey: String, request: SupabaseSignupRequest): Response<SupabaseTokenResponse> = Response.success(null)
+    override suspend fun signup(apiKey: String, request: SupabaseSignupRequest): Response<com.example.data.model.SupabaseSignupResponse> = Response.success(null)
     override suspend fun logout(apiKey: String, bearerToken: String): Response<Unit> = Response.success(Unit)
     override suspend fun getProfile(apiKey: String, bearerToken: String, idFilter: String, select: String): Response<List<UserProfile>> = Response.success(emptyList())
     override suspend fun getAllProfiles(apiKey: String, bearerToken: String, select: String, order: String): Response<List<UserProfile>> = Response.success(profiles)
@@ -845,6 +846,7 @@ open class FakeSupabaseDatabaseEngine : SupabaseAuthApi {
     override suspend fun getSchoolById(apiKey: String, bearerToken: String, idFilter: String, select: String): Response<List<School>> = Response.success(emptyList())
     override suspend fun getTeachersBySchool(apiKey: String, bearerToken: String, schoolIdFilter: String, roleFilter: String, select: String, order: String): Response<List<UserProfile>> = Response.success(emptyList())
     override suspend fun schoolAdminCreateTeacherRpc(apiKey: String, bearerToken: String, request: SchoolAdminCreateTeacherRequest): Response<UserProfile> = Response.success(null)
+    override suspend fun schoolAdminCreateStudentRpc(apiKey: String, bearerToken: String, request: SchoolAdminCreateStudentRequest): Response<UserProfile> = Response.success(null)
     override suspend fun schoolAdminUpdateTeacherRpc(apiKey: String, bearerToken: String, request: SchoolAdminUpdateTeacherRequest): Response<UserProfile> = Response.success(null)
     override suspend fun officerAdminCreateSchoolRpc(apiKey: String, bearerToken: String, request: CreateSchoolRequest): Response<School> = Response.success(null)
     override suspend fun officerAdminUpdateSchoolRpc(apiKey: String, bearerToken: String, request: UpdateSchoolRequest): Response<School> = Response.success(null)

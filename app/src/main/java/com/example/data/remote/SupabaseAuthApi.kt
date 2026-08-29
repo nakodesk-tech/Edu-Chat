@@ -12,6 +12,7 @@ import com.example.data.model.AddGroupMemberRequest
 import com.example.data.model.RemoveGroupMemberRequest
 import com.example.data.model.OfficerAdminCreateUserRequest
 import com.example.data.model.School
+import com.example.data.model.SchoolAdminCreateStudentRequest
 import com.example.data.model.SchoolAdminCreateTeacherRequest
 import com.example.data.model.SchoolAdminUpdateTeacherRequest
 import com.example.data.model.SendGroupMessageRequest
@@ -49,7 +50,7 @@ interface SupabaseAuthApi {
     suspend fun signup(
         @Header("apikey") apiKey: String,
         @Body request: SupabaseSignupRequest
-    ): Response<SupabaseTokenResponse>
+    ): Response<com.example.data.model.SupabaseSignupResponse>
 
     @POST("auth/v1/logout")
     suspend fun logout(
@@ -149,6 +150,13 @@ interface SupabaseAuthApi {
         @Header("apikey") apiKey: String,
         @Header("Authorization") bearerToken: String,
         @Body request: SchoolAdminCreateTeacherRequest
+    ): Response<UserProfile>
+
+    @POST("rest/v1/rpc/school_admin_create_student")
+    suspend fun schoolAdminCreateStudentRpc(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") bearerToken: String,
+        @Body request: SchoolAdminCreateStudentRequest
     ): Response<UserProfile>
 
     @POST("rest/v1/rpc/school_admin_update_teacher")
