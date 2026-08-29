@@ -90,7 +90,7 @@ class SupabaseRealtimeClient(
         val wsUrl = rawUrl
             .replace("https://", "wss://")
             .replace("http://", "ws://")
-            .trimEnd('/') + "/realtime/v1/websocket?apikey=$anonKey&vsn=1.0.0"
+            .trimEnd('/') + "/realtime/v1/websocket?apikey=$anonKey&token=$accessToken&vsn=1.0.0"
 
         val request = Request.Builder()
             .url(wsUrl)
@@ -163,7 +163,7 @@ class SupabaseRealtimeClient(
         try {
             val postgresChangesArray = JSONArray().apply {
                 put(JSONObject().apply {
-                    put("id", "1")
+                    put("id", 1)
                     put("event", "INSERT")
                     put("schema", "public")
                     put("table", "messages")
