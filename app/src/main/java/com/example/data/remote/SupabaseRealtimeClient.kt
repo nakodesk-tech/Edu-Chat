@@ -157,7 +157,7 @@ class SupabaseRealtimeClient(
     }
 
     private fun sendPhoenixJoin(groupId: String) {
-        val topic = "realtime:public:messages"
+        val topic = "realtime:messages"
         val ref = nextRef()
 
         try {
