@@ -12,6 +12,7 @@ import com.example.data.model.School
 import com.example.data.model.UserProfile
 import com.example.data.model.UserRole
 import com.example.data.repository.GroupRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -50,6 +51,7 @@ data class ChatGroupUiState(
 class ChatGroupViewModel(application: Application) : AndroidViewModel(application) {
     private val groupRepo = GroupRepository(application)
     private val sessionManager = SessionManager(application)
+    private var realtimeMessagesJob: Job? = null
 
     private val _uiState = MutableStateFlow(ChatGroupUiState())
     val uiState: StateFlow<ChatGroupUiState> = _uiState.asStateFlow()
@@ -121,6 +123,7 @@ class ChatGroupViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun openChatGroup(group: Group) {
+        realtimeMessagesJob?.cancel()
         _uiState.update {
             it.copy(
                 activeChatGroup = group,
@@ -133,9 +136,12 @@ class ChatGroupViewModel(application: Application) : AndroidViewModel(applicatio
         }
         loadGroupDetailsInternal(group.id)
         loadMessages(group.id)
+        startRealtimeMessagesObservation(group.id)
     }
 
     fun closeChatGroup() {
+        realtimeMessagesJob?.cancel()
+        realtimeMessagesJob = null
         _uiState.update {
             it.copy(
                 activeChatGroup = null,
@@ -479,6 +485,39 @@ class ChatGroupViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    private fun startRealtimeMessagesObservation(groupId: String) {
+        realtimeMessagesJob?.cancel()
+        realtimeMessagesJob = viewModelScope.launch {
+            groupRepo.observeGroupMessages(groupId).collect { incomingMsg ->
+                _uiState.update { state ->
+                    // Verify that the incoming message belongs to the currently active chat group
+                    if (state.activeChatGroup?.id != incomingMsg.groupId) {
+                        return@update state
+                    }
+
+                    // Strict deduplication: ignore if message ID is already present
+                    if (state.messages.any { it.id == incomingMsg.id }) {
+                        return@update state
+                    }
+
+                    // Enrich sender profile if missing
+                    val enriched = if (incomingMsg.senderProfile == null) {
+                        val memberProfile = state.selectedGroupMembers
+                            .firstOrNull { it.userId == incomingMsg.senderId }?.userProfile
+                            ?: if (state.currentProfile?.id == incomingMsg.senderId) state.currentProfile else null
+                        incomingMsg.copy(senderProfile = memberProfile)
+                    } else {
+                        incomingMsg
+                    }
+
+                    // Merge and maintain chronological ordering (oldest -> newest)
+                    val updatedList = (state.messages + enriched).sortedBy { it.createdAt ?: "" }
+                    state.copy(messages = updatedList)
+                }
+            }
+        }
+    }
+
     fun sendMessage(groupId: String, content: String = _uiState.value.messageInput) {
         val trimmed = content.trim()
         if (groupId.isBlank() || trimmed.isBlank()) {
@@ -495,7 +534,11 @@ class ChatGroupViewModel(application: Application) : AndroidViewModel(applicatio
                     } else {
                         sentMessage
                     }
-                    val updatedList = state.messages + enrichedMessage
+                    val updatedList = if (state.messages.none { it.id == enrichedMessage.id }) {
+                        (state.messages + enrichedMessage).sortedBy { it.createdAt ?: "" }
+                    } else {
+                        state.messages
+                    }
                     state.copy(
                         isSendingMessage = false,
                         messageInput = "",
@@ -519,5 +562,11 @@ class ChatGroupViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun clearError() {
         _uiState.update { it.copy(errorMessage = null) }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        realtimeMessagesJob?.cancel()
+        realtimeMessagesJob = null
     }
 }

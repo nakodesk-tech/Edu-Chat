@@ -17,7 +17,12 @@ import com.example.data.model.UserRole
 import com.example.data.remote.SupabaseAuthApi
 import com.example.data.remote.SupabaseClient
 import com.example.data.remote.SupabaseConfig
+import android.util.Log
+import com.example.data.remote.SupabaseRealtimeClient
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.withContext
 
 /**
@@ -456,6 +461,48 @@ class GroupRepository(
             Result.failure(e)
         } catch (e: Exception) {
             Result.failure(Exception("संदेश पाठवण्यात त्रुटी आली. कृपया पुन्हा प्रयत्न करा.", e))
+        }
+    }
+
+    /**
+     * Start live observation of incoming group messages via Supabase Realtime WebSocket.
+     * Fails gracefully without breaking normal chat flow if realtime connection fails.
+     */
+    fun observeGroupMessages(groupId: String): Flow<ChatMessage> = callbackFlow {
+        if (groupId.isBlank()) {
+            close()
+            return@callbackFlow
+        }
+
+        val session = sessionManager.getSession()
+        val token = sessionManager.getAccessToken()
+        if (session == null || token.isNullOrBlank() || !session.profile.isActive) {
+            close()
+            return@callbackFlow
+        }
+
+        if (apiOverride != null || !SupabaseConfig.isConfigured(context)) {
+            awaitClose { }
+            return@callbackFlow
+        }
+
+        val realtimeClient = SupabaseRealtimeClient(
+            context = context,
+            accessToken = token,
+            onMessageReceived = { message ->
+                if (message.groupId == groupId && !message.isDeleted) {
+                    trySend(message)
+                }
+            },
+            onError = { error ->
+                Log.w("GroupRepository", "Realtime WebSocket error for group $groupId: ${error.message}")
+            }
+        )
+
+        realtimeClient.subscribeToGroupMessages(groupId)
+
+        awaitClose {
+            realtimeClient.disconnect()
         }
     }
 }
