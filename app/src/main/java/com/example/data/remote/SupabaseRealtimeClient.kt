@@ -11,6 +11,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -87,10 +88,36 @@ class SupabaseRealtimeClient(
             return
         }
 
-        val wsUrl = rawUrl
-            .replace("https://", "wss://")
-            .replace("http://", "ws://")
-            .trimEnd('/') + "/realtime/v1/websocket?apikey=$anonKey&token=$accessToken&vsn=1.0.0"
+        // Validate that accessToken is a valid JWT with 3 dot-separated non-empty parts and not a mock/opaque token
+        if (!isValidJwt(accessToken)) {
+            Log.w(TAG, "Cannot connect to Realtime: access token is not a valid JWT")
+            return
+        }
+
+        val baseHttpUrl = (if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) {
+            rawUrl
+        } else {
+            "https://$rawUrl"
+        }).trimEnd('/').toHttpUrlOrNull()
+
+        if (baseHttpUrl == null) {
+            Log.e(TAG, "Invalid Supabase URL format for Realtime")
+            return
+        }
+
+        // Build WebSocket URL with safely encoded query parameters via HttpUrl.Builder
+        val httpUrlWithParams = baseHttpUrl.newBuilder()
+            .addPathSegment("realtime")
+            .addPathSegment("v1")
+            .addPathSegment("websocket")
+            .addQueryParameter("apikey", anonKey)
+            .addQueryParameter("token", accessToken)
+            .addQueryParameter("vsn", "1.0.0")
+            .build()
+
+        val wsUrl = httpUrlWithParams.toString()
+            .replaceFirst("https://", "wss://")
+            .replaceFirst("http://", "ws://")
 
         val request = Request.Builder()
             .url(wsUrl)
@@ -106,6 +133,15 @@ class SupabaseRealtimeClient(
             onError(e)
             scheduleReconnect()
         }
+    }
+
+    private fun isValidJwt(token: String): Boolean {
+        val trimmed = token.trim()
+        if (trimmed.isBlank() || trimmed.startsWith("mock_", ignoreCase = true)) {
+            return false
+        }
+        val parts = trimmed.split(".")
+        return parts.size == 3 && parts.all { it.isNotBlank() }
     }
 
     private fun createWebSocketListener(): WebSocketListener {
