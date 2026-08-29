@@ -119,17 +119,7 @@ fun StudentManagementContent(
                     .testTag("students_search_input")
             )
 
-            // 4. Standard / Class Filter Chips
-            val standardOptions = listOf(
-                "सर्व",
-                "१० वी",
-                "९ वी",
-                "८ वी",
-                "७ वी",
-                "६ वी",
-                "५ वी"
-            )
-
+            // 4. Standard / Class Filter Chips (All, 1st, 2nd, 3rd ... 10th)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -144,14 +134,14 @@ fun StudentManagementContent(
                     color = TextSecondary
                 )
 
-                standardOptions.forEach { std ->
+                StudentStandardUtils.FILTER_STANDARDS.forEach { std ->
                     val isSelected = uiState.selectedStandardFilter == std
                     FilterChip(
                         selected = isSelected,
                         onClick = { viewModel.setStandardFilter(std) },
                         label = {
                             Text(
-                                text = std,
+                                text = StudentStandardUtils.getFilterChipLabel(std),
                                 fontSize = 12.sp,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                             )
@@ -613,18 +603,39 @@ fun CompactStudentCard(
                         )
                     }
 
-                    // Standard/Class Badge
-                    if (!student.standard.isNullOrBlank()) {
+                    // Standard Badge
+                    val standardText = StudentStandardUtils.parseStandard(student.standard) ?: student.standard
+                    if (!standardText.isNullOrBlank()) {
                         Surface(
                             shape = RoundedCornerShape(6.dp),
                             color = PrimaryIndigoContainer,
                             border = BorderStroke(0.5.dp, PrimaryIndigo.copy(alpha = 0.35f))
                         ) {
                             Text(
-                                text = student.standard,
+                                text = "इयत्ता $standardText",
                                 fontSize = 10.5.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = PrimaryIndigo,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    // Section Badge (shown separately when available)
+                    val sectionText = StudentStandardUtils.parseSection(student.standard)
+                    if (!sectionText.isNullOrBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFFEF3C7),
+                            border = BorderStroke(0.5.dp, Color(0xFFF59E0B).copy(alpha = 0.35f))
+                        ) {
+                            Text(
+                                text = "तुकडी $sectionText",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFFB45309),
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -795,7 +806,8 @@ fun CompactStudentCard(
 }
 
 /**
- * Register Student Dialog
+ * Register Student Dialog with separate Standard (1st..10th) and Section (A..F) dropdowns,
+ * and auto-fetched School & UDISE code display according to user role.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -814,7 +826,10 @@ fun RegisterStudentDialog(
     var confirmPassword by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var mobile by remember { mutableStateOf("") }
-    var standard by remember { mutableStateOf("इयत्ता १० वी (Class 10-A)") }
+    var selectedStandard by remember { mutableStateOf("10th") }
+    var standardDropdownExpanded by remember { mutableStateOf(false) }
+    var selectedSection by remember { mutableStateOf("A") }
+    var sectionDropdownExpanded by remember { mutableStateOf(false) }
     var selectedSchoolId by remember {
         mutableStateOf(currentSchoolId ?: schools.firstOrNull()?.id ?: "")
     }
@@ -869,23 +884,89 @@ fun RegisterStudentDialog(
                         .testTag("input_student_fullname")
                 )
 
-                // Standard / Class
-                OutlinedTextField(
-                    value = standard,
-                    onValueChange = { standard = it },
-                    label = { Text("इयत्ता / तुकडी (Class / Standard)") },
-                    placeholder = { Text("उदा. इयत्ता १० वी अ") },
-                    enabled = !isLoading,
-                    singleLine = true,
-                    shape = RoundedCornerShape(10.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = SecondaryGreen,
-                        unfocusedBorderColor = BorderSubtle
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("input_student_standard")
-                )
+                // Standard & Section 2 Dropdowns Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Standard Dropdown (1st..10th)
+                    Box(modifier = Modifier.weight(1.2f)) {
+                        ExposedDropdownMenuBox(
+                            expanded = standardDropdownExpanded,
+                            onExpandedChange = { if (!isLoading) standardDropdownExpanded = it }
+                        ) {
+                            OutlinedTextField(
+                                value = StudentStandardUtils.getStandardLabel(selectedStandard),
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("इयत्ता *") },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = standardDropdownExpanded) },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = SecondaryGreen,
+                                    unfocusedBorderColor = BorderSubtle
+                                ),
+                                modifier = Modifier
+                                    .menuAnchor()
+                                    .fillMaxWidth()
+                                    .testTag("select_student_standard")
+                            )
+                            ExposedDropdownMenu(
+                                expanded = standardDropdownExpanded,
+                                onDismissRequest = { standardDropdownExpanded = false }
+                            ) {
+                                StudentStandardUtils.STANDARDS.forEach { std ->
+                                    DropdownMenuItem(
+                                        text = { Text(StudentStandardUtils.getStandardLabel(std), fontSize = 13.sp) },
+                                        onClick = {
+                                            selectedStandard = std
+                                            standardDropdownExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Section Dropdown (A..F)
+                    Box(modifier = Modifier.weight(1f)) {
+                        ExposedDropdownMenuBox(
+                            expanded = sectionDropdownExpanded,
+                            onExpandedChange = { if (!isLoading) sectionDropdownExpanded = it }
+                        ) {
+                            OutlinedTextField(
+                                value = StudentStandardUtils.getSectionLabel(selectedSection),
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("तुकडी *") },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = sectionDropdownExpanded) },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = SecondaryGreen,
+                                    unfocusedBorderColor = BorderSubtle
+                                ),
+                                modifier = Modifier
+                                    .menuAnchor()
+                                    .fillMaxWidth()
+                                    .testTag("select_student_section")
+                            )
+                            ExposedDropdownMenu(
+                                expanded = sectionDropdownExpanded,
+                                onDismissRequest = { sectionDropdownExpanded = false }
+                            ) {
+                                StudentStandardUtils.SECTIONS.forEach { sec ->
+                                    DropdownMenuItem(
+                                        text = { Text(StudentStandardUtils.getSectionLabel(sec), fontSize = 13.sp) },
+                                        onClick = {
+                                            selectedSection = sec
+                                            sectionDropdownExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // Email
                 OutlinedTextField(
@@ -971,18 +1052,19 @@ fun RegisterStudentDialog(
                         .testTag("input_student_confirm_password")
                 )
 
-                // School Selector (Active dropdown for Officer Admin, read-only if Teacher)
+                // School and UDISE Display / Selector
+                val assignedSchool = schools.firstOrNull { it.id == selectedSchoolId }
                 if (isOfficerAdmin && schools.isNotEmpty()) {
                     ExposedDropdownMenuBox(
                         expanded = schoolDropdownExpanded,
                         onExpandedChange = { if (!isLoading) schoolDropdownExpanded = it }
                     ) {
-                        val selectedName = schools.firstOrNull { it.id == selectedSchoolId }?.name ?: "शाळा निवडा"
+                        val selectedName = assignedSchool?.let { "${it.name} (${it.code})" } ?: "शाळा निवडा"
                         OutlinedTextField(
                             value = selectedName,
                             onValueChange = {},
                             readOnly = true,
-                            label = { Text("शाळा निवडा *") },
+                            label = { Text("शाळा निवडा (School & UDISE) *") },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = schoolDropdownExpanded) },
                             shape = RoundedCornerShape(10.dp),
                             colors = OutlinedTextFieldDefaults.colors(
@@ -1000,11 +1082,52 @@ fun RegisterStudentDialog(
                         ) {
                             schools.forEach { school ->
                                 DropdownMenuItem(
-                                    text = { Text(school.name, fontSize = 13.sp) },
+                                    text = {
+                                        Column {
+                                            Text(school.name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                            Text("UDISE / कोड: ${school.code}", fontSize = 11.sp, color = TextSecondary)
+                                        }
+                                    },
                                     onClick = {
                                         selectedSchoolId = school.id
                                         schoolDropdownExpanded = false
                                     }
+                                )
+                            }
+                        }
+                    }
+                } else if (assignedSchool != null) {
+                    // Auto-fetched school and UDISE for Teacher / School Admin
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFFF8FAFC),
+                        border = BorderStroke(1.dp, BorderSubtle),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AccountBalance,
+                                contentDescription = null,
+                                tint = SecondaryGreen,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = assignedSchool.name,
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary
+                                )
+                                Text(
+                                    text = "UDISE कोड: ${assignedSchool.code} • शाळा स्वयंचलित निश्चित",
+                                    fontSize = 11.sp,
+                                    color = TextSecondary
                                 )
                             }
                         }
@@ -1020,7 +1143,7 @@ fun RegisterStudentDialog(
                         email.trim(),
                         password,
                         mobile.trim(),
-                        standard.trim(),
+                        StudentStandardUtils.formatStoredStandard(selectedStandard, selectedSection),
                         selectedSchoolId
                     )
                 },
@@ -1059,8 +1182,9 @@ fun RegisterStudentDialog(
 }
 
 /**
- * Edit Student Dialog
+ * Edit Student Dialog with separate Standard (1st..10th) and Section (A..F) dropdowns
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditStudentDialog(
     student: UserProfile,
@@ -1073,7 +1197,14 @@ fun EditStudentDialog(
 ) {
     var fullName by remember(student) { mutableStateOf(student.fullName ?: "") }
     var mobile by remember(student) { mutableStateOf(student.mobile ?: "") }
-    var standard by remember(student) { mutableStateOf(student.standard ?: "") }
+    var selectedStandard by remember(student) {
+        mutableStateOf(StudentStandardUtils.parseStandard(student.standard) ?: "10th")
+    }
+    var standardDropdownExpanded by remember { mutableStateOf(false) }
+    var selectedSection by remember(student) {
+        mutableStateOf(StudentStandardUtils.parseSection(student.standard) ?: "A")
+    }
+    var sectionDropdownExpanded by remember { mutableStateOf(false) }
     var isActive by remember(student) { mutableStateOf(student.isActive) }
 
     AlertDialog(
@@ -1134,22 +1265,89 @@ fun EditStudentDialog(
                         .testTag("input_edit_student_name")
                 )
 
-                // Standard / Class
-                OutlinedTextField(
-                    value = standard,
-                    onValueChange = { standard = it },
-                    label = { Text("इयत्ता / तुकडी (Class / Standard)") },
-                    enabled = !isLoading,
-                    singleLine = true,
-                    shape = RoundedCornerShape(10.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = SecondaryGreen,
-                        unfocusedBorderColor = BorderSubtle
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("input_edit_student_standard")
-                )
+                // Standard & Section 2 Dropdowns Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Standard Dropdown (1st..10th)
+                    Box(modifier = Modifier.weight(1.2f)) {
+                        ExposedDropdownMenuBox(
+                            expanded = standardDropdownExpanded,
+                            onExpandedChange = { if (!isLoading) standardDropdownExpanded = it }
+                        ) {
+                            OutlinedTextField(
+                                value = StudentStandardUtils.getStandardLabel(selectedStandard),
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("इयत्ता *") },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = standardDropdownExpanded) },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = SecondaryGreen,
+                                    unfocusedBorderColor = BorderSubtle
+                                ),
+                                modifier = Modifier
+                                    .menuAnchor()
+                                    .fillMaxWidth()
+                                    .testTag("input_edit_student_standard")
+                            )
+                            ExposedDropdownMenu(
+                                expanded = standardDropdownExpanded,
+                                onDismissRequest = { standardDropdownExpanded = false }
+                            ) {
+                                StudentStandardUtils.STANDARDS.forEach { std ->
+                                    DropdownMenuItem(
+                                        text = { Text(StudentStandardUtils.getStandardLabel(std), fontSize = 13.sp) },
+                                        onClick = {
+                                            selectedStandard = std
+                                            standardDropdownExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Section Dropdown (A..F)
+                    Box(modifier = Modifier.weight(1f)) {
+                        ExposedDropdownMenuBox(
+                            expanded = sectionDropdownExpanded,
+                            onExpandedChange = { if (!isLoading) sectionDropdownExpanded = it }
+                        ) {
+                            OutlinedTextField(
+                                value = StudentStandardUtils.getSectionLabel(selectedSection),
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("तुकडी *") },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = sectionDropdownExpanded) },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = SecondaryGreen,
+                                    unfocusedBorderColor = BorderSubtle
+                                ),
+                                modifier = Modifier
+                                    .menuAnchor()
+                                    .fillMaxWidth()
+                                    .testTag("input_edit_student_section")
+                            )
+                            ExposedDropdownMenu(
+                                expanded = sectionDropdownExpanded,
+                                onDismissRequest = { sectionDropdownExpanded = false }
+                            ) {
+                                StudentStandardUtils.SECTIONS.forEach { sec ->
+                                    DropdownMenuItem(
+                                        text = { Text(StudentStandardUtils.getSectionLabel(sec), fontSize = 13.sp) },
+                                        onClick = {
+                                            selectedSection = sec
+                                            sectionDropdownExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // Mobile
                 OutlinedTextField(
@@ -1199,7 +1397,13 @@ fun EditStudentDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    onSave(fullName.trim(), mobile.trim(), standard.trim(), student.schoolId, isActive)
+                    onSave(
+                        fullName.trim(),
+                        mobile.trim(),
+                        StudentStandardUtils.formatStoredStandard(selectedStandard, selectedSection),
+                        student.schoolId,
+                        isActive
+                    )
                 },
                 enabled = !isLoading && fullName.isNotBlank(),
                 shape = RoundedCornerShape(10.dp),
@@ -1381,6 +1585,9 @@ fun StudentDetailDialog(
         onDismissRequest = onDismiss,
         title = null,
         text = {
+            val parsedStd = StudentStandardUtils.parseStandard(student.standard) ?: student.standard
+            val parsedSec = StudentStandardUtils.parseSection(student.standard)
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1430,17 +1637,33 @@ fun StudentDetailDialog(
                         )
                     }
 
-                    if (!student.standard.isNullOrBlank()) {
+                    if (!parsedStd.isNullOrBlank()) {
                         Surface(
                             shape = RoundedCornerShape(6.dp),
                             color = PrimaryIndigoContainer,
                             border = BorderStroke(0.5.dp, PrimaryIndigo.copy(alpha = 0.35f))
                         ) {
                             Text(
-                                text = student.standard,
+                                text = "इयत्ता $parsedStd",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = PrimaryIndigo,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+
+                    if (!parsedSec.isNullOrBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFFEF3C7),
+                            border = BorderStroke(0.5.dp, Color(0xFFF59E0B).copy(alpha = 0.35f))
+                        ) {
+                            Text(
+                                text = "तुकडी $parsedSec",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFFB45309),
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                             )
                         }
@@ -1477,8 +1700,11 @@ fun StudentDetailDialog(
                     if (!student.mobile.isNullOrBlank()) {
                         DetailItemRow(icon = Icons.Default.Phone, label = "मोबाईल:", value = student.mobile)
                     }
-                    if (!student.standard.isNullOrBlank()) {
-                        DetailItemRow(icon = Icons.Default.Class, label = "इयत्ता:", value = student.standard)
+                    if (!parsedStd.isNullOrBlank()) {
+                        DetailItemRow(icon = Icons.Default.Class, label = "इयत्ता:", value = StudentStandardUtils.getStandardLabel(parsedStd))
+                    }
+                    if (!parsedSec.isNullOrBlank()) {
+                        DetailItemRow(icon = Icons.Default.Grade, label = "तुकडी:", value = StudentStandardUtils.getSectionLabel(parsedSec))
                     }
                     if (!schoolName.isNullOrBlank()) {
                         DetailItemRow(icon = Icons.Default.AccountBalance, label = "शाळा:", value = schoolName)

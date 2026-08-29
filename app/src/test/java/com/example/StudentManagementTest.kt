@@ -267,4 +267,46 @@ class StudentManagementTest {
         val students = studentsResult.getOrDefault(emptyList())
         assertTrue(students.any { it.email == "rohan.shinde@educhat.edu" })
     }
+
+    @Test
+    fun testStudentStandardUtils_FormattingAndParsing() {
+        val formatted = com.example.ui.students.StudentStandardUtils.formatStoredStandard("10th", "A")
+        assertEquals("10th - A", formatted)
+
+        val parsedStd1 = com.example.ui.students.StudentStandardUtils.parseStandard("10th - A")
+        val parsedSec1 = com.example.ui.students.StudentStandardUtils.parseSection("10th - A")
+        assertEquals("10th", parsedStd1)
+        assertEquals("A", parsedSec1)
+
+        val parsedStd2 = com.example.ui.students.StudentStandardUtils.parseStandard("इयत्ता १० वी अ (Class 10-A)")
+        val parsedSec2 = com.example.ui.students.StudentStandardUtils.parseSection("इयत्ता १० वी अ (Class 10-A)")
+        assertEquals("10th", parsedStd2)
+        assertEquals("A", parsedSec2)
+
+        val parsedStd3 = com.example.ui.students.StudentStandardUtils.parseStandard("1st")
+        val parsedSec3 = com.example.ui.students.StudentStandardUtils.parseSection("1st")
+        assertEquals("1st", parsedStd3)
+        assertNull(parsedSec3)
+
+        val parsedStd4 = com.example.ui.students.StudentStandardUtils.parseStandard("7th - B")
+        val parsedSec4 = com.example.ui.students.StudentStandardUtils.parseSection("7th - B")
+        assertEquals("7th", parsedStd4)
+        assertEquals("B", parsedSec4)
+    }
+
+    @Test
+    fun testFilterStandardsOrder_AllAnd1stTo10th() {
+        val standards = com.example.ui.students.StudentStandardUtils.FILTER_STANDARDS
+        assertEquals("सर्व", standards[0])
+        assertEquals("1st", standards[1])
+        assertEquals("2nd", standards[2])
+        assertEquals("3rd", standards[3])
+        assertEquals("4th", standards[4])
+        assertEquals("5th", standards[5])
+        assertEquals("6th", standards[6])
+        assertEquals("7th", standards[7])
+        assertEquals("8th", standards[8])
+        assertEquals("9th", standards[9])
+        assertEquals("10th", standards[10])
+    }
 }

@@ -284,8 +284,12 @@ class StudentManagementViewModel @JvmOverloads constructor(
             }
 
             // Standard filter
-            val matchesStandard = if (standardFilter == "सर्व") true else {
-                student.standard?.contains(standardFilter, ignoreCase = true) == true
+            val matchesStandard = if (standardFilter == "सर्व" || standardFilter.equals("All", ignoreCase = true)) {
+                true
+            } else {
+                val parsedStd = StudentStandardUtils.parseStandard(student.standard)
+                parsedStd.equals(standardFilter, ignoreCase = true) ||
+                    student.standard?.contains(standardFilter, ignoreCase = true) == true
             }
 
             // Status filter

@@ -22,6 +22,7 @@ class StudentRepository(private val context: Context) {
 
     /**
      * Verifies that the caller has an active session and is authorized to manage students.
+     * Allowed roles: TEACHER, SCHOOL_ADMIN, OFFICER_ADMIN.
      */
     fun checkAuthorization(): Result<AuthSession> {
         val session = sessionManager.getSession()
@@ -30,6 +31,14 @@ class StudentRepository(private val context: Context) {
         val profile = session.profile
         if (!profile.isActive) {
             return Result.failure(SecurityException("आपले खाते निष्क्रिय आहे. (Account is deactivated)"))
+        }
+
+        val role = profile.userRole
+        if (role != com.example.data.model.UserRole.OFFICER_ADMIN &&
+            role != com.example.data.model.UserRole.SCHOOL_ADMIN &&
+            role != com.example.data.model.UserRole.TEACHER
+        ) {
+            return Result.failure(SecurityException("विद्यार्थी व्यवस्थापनासाठी परवानगी नाही. (Unauthorized role)"))
         }
 
         return Result.success(session)
@@ -132,35 +141,90 @@ class StudentRepository(private val context: Context) {
             try {
                 val api = SupabaseClient.getApi(context)
                 val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
-                val response = api.officerAdminCreateUserRpc(
-                    apiKey = anonKey,
-                    bearerToken = "Bearer ${currentSession.accessToken}",
-                    request = OfficerAdminCreateUserRequest(
-                        email = trimmedEmail,
-                        password = password,
-                        fullName = trimmedName,
-                        mobile = trimmedMobile,
-                        role = "student",
-                        schoolId = effectiveSchoolId
-                    )
-                )
 
-                if (response.isSuccessful && response.body() != null) {
-                    val created = response.body()!!
-                    // Patch standard/class on profile if provided
-                    if (!trimmedStandard.isNullOrBlank()) {
+                if (callerProfile.isOfficerAdmin) {
+                    val response = api.officerAdminCreateUserRpc(
+                        apiKey = anonKey,
+                        bearerToken = "Bearer ${currentSession.accessToken}",
+                        request = OfficerAdminCreateUserRequest(
+                            email = trimmedEmail,
+                            password = password,
+                            fullName = trimmedName,
+                            mobile = trimmedMobile,
+                            role = "student",
+                            schoolId = effectiveSchoolId
+                        )
+                    )
+
+                    if (response.isSuccessful && response.body() != null) {
+                        val created = response.body()!!
+                        // Patch standard/class on profile if provided
+                        if (!trimmedStandard.isNullOrBlank()) {
+                            api.patchProfile(
+                                apiKey = anonKey,
+                                bearerToken = "Bearer ${currentSession.accessToken}",
+                                idFilter = "eq.${created.id}",
+                                updates = mapOf("standard" to trimmedStandard)
+                            )
+                        }
+                        Result.success(created.copy(standard = trimmedStandard))
+                    } else {
+                        val rawError = response.errorBody()?.string()
+                        val msg = SupabaseClient.parseError(rawError) ?: "विद्यार्थी नोंदणी अयशस्वी झाली."
+                        Result.failure(Exception(msg))
+                    }
+                } else {
+                    // Active TEACHER or SCHOOL_ADMIN creating student within their authorized school
+                    val signupResponse = api.signup(
+                        apiKey = anonKey,
+                        request = com.example.data.model.SupabaseSignupRequest(
+                            email = trimmedEmail,
+                            password = password,
+                            data = mapOf(
+                                "full_name" to trimmedName,
+                                "role" to "student",
+                                "school_id" to effectiveSchoolId
+                            )
+                        )
+                    )
+
+                    if (signupResponse.isSuccessful && signupResponse.body() != null) {
+                        val user = signupResponse.body()!!.user
+                        val newUserId = user?.id ?: java.util.UUID.randomUUID().toString()
+
+                        val updates = mutableMapOf<String, Any?>(
+                            "full_name" to trimmedName,
+                            "role" to "student",
+                            "school_id" to effectiveSchoolId,
+                            "is_active" to true
+                        )
+                        if (!trimmedMobile.isNullOrBlank()) updates["mobile"] = trimmedMobile
+                        if (!trimmedStandard.isNullOrBlank()) updates["standard"] = trimmedStandard
+
                         api.patchProfile(
                             apiKey = anonKey,
                             bearerToken = "Bearer ${currentSession.accessToken}",
-                            idFilter = "eq.${created.id}",
-                            updates = mapOf("standard" to trimmedStandard)
+                            idFilter = "eq.$newUserId",
+                            updates = updates
                         )
+
+                        Result.success(
+                            UserProfile(
+                                id = newUserId,
+                                fullName = trimmedName,
+                                email = trimmedEmail,
+                                mobile = trimmedMobile,
+                                standard = trimmedStandard,
+                                role = "student",
+                                isActive = true,
+                                schoolId = effectiveSchoolId
+                            )
+                        )
+                    } else {
+                        val rawError = signupResponse.errorBody()?.string()
+                        val msg = SupabaseClient.parseError(rawError) ?: "विद्यार्थी नोंदणी अयशस्वी झाली."
+                        Result.failure(Exception(msg))
                     }
-                    Result.success(created.copy(standard = trimmedStandard))
-                } else {
-                    val rawError = response.errorBody()?.string()
-                    val msg = SupabaseClient.parseError(rawError) ?: "विद्यार्थी नोंदणी अयशस्वी झाली."
-                    Result.failure(Exception(msg))
                 }
             } catch (e: Exception) {
                 Result.failure(Exception("नोंदणी त्रुटी: ${e.localizedMessage ?: "Registration error"}"))
