@@ -50,6 +50,9 @@ class SupabaseRealtimeClient(
     
     @Volatile
     private var isConnected = false
+
+    @Volatile
+    private var isSubscribed = false
     
     private var currentGroupId: String? = null
     private var reconnectAttempts = 0
@@ -108,7 +111,7 @@ class SupabaseRealtimeClient(
     private fun createWebSocketListener(): WebSocketListener {
         return object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                Log.d(TAG, "WebSocket connected successfully to Supabase Realtime")
+                Log.d(TAG, "WEBSOCKET_OPEN: connected successfully to Supabase Realtime")
                 isConnected = true
                 reconnectAttempts = 0
                 
@@ -127,21 +130,24 @@ class SupabaseRealtimeClient(
             }
 
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                Log.d(TAG, "WebSocket closing: $code / $reason")
+                Log.d(TAG, "WEBSOCKET_CLOSING: code=$code, reason=$reason")
                 isConnected = false
+                isSubscribed = false
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                Log.d(TAG, "WebSocket closed: $code / $reason")
+                Log.d(TAG, "REALTIME_DISCONNECTED: code=$code, reason=$reason")
                 isConnected = false
+                isSubscribed = false
                 if (!isClosed) {
                     scheduleReconnect()
                 }
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                Log.w(TAG, "WebSocket failure: ${t.message}")
+                Log.w(TAG, "WEBSOCKET_FAILURE: ${t.message}")
                 isConnected = false
+                isSubscribed = false
                 onError(t)
                 if (!isClosed) {
                     scheduleReconnect()
@@ -157,6 +163,7 @@ class SupabaseRealtimeClient(
         try {
             val postgresChangesArray = JSONArray().apply {
                 put(JSONObject().apply {
+                    put("id", "1")
                     put("event", "INSERT")
                     put("schema", "public")
                     put("table", "messages")
@@ -165,6 +172,8 @@ class SupabaseRealtimeClient(
             }
 
             val configObj = JSONObject().apply {
+                put("broadcast", JSONObject().apply { put("self", false) })
+                put("presence", JSONObject().apply { put("key", "") })
                 put("postgres_changes", postgresChangesArray)
             }
 
@@ -182,7 +191,7 @@ class SupabaseRealtimeClient(
             }
 
             webSocket?.send(joinMessage.toString())
-            Log.d(TAG, "Sent phx_join for topic $topic, group_id=$groupId")
+            Log.d(TAG, "CHANNEL_JOIN_SENT: topic=$topic, filter=group_id=eq.$groupId, ref=$ref")
         } catch (e: Exception) {
             Log.e(TAG, "Error sending phx_join", e)
         }
@@ -218,6 +227,7 @@ class SupabaseRealtimeClient(
 
             when (event) {
                 "postgres_changes" -> {
+                    Log.d(TAG, "POSTGRES_CHANGE_RECEIVED: topic=${json.optString("topic")}")
                     val record = extractRecord(payload)
                     if (record != null) {
                         val id = record.optString("id", "")
@@ -232,6 +242,7 @@ class SupabaseRealtimeClient(
                         if (id.isNotBlank() && content.isNotBlank() && !isDeleted &&
                             (targetGroupId == null || groupId == targetGroupId)
                         ) {
+                            Log.d(TAG, "MESSAGE_PARSED: id=$id, groupId=$groupId, senderId=$senderId")
                             val chatMessage = ChatMessage(
                                 id = id,
                                 groupId = groupId,
@@ -242,18 +253,29 @@ class SupabaseRealtimeClient(
                                 isDeleted = isDeleted,
                                 senderProfile = null
                             )
+                            Log.d(TAG, "MESSAGE_EMITTED: id=$id to flow callback")
                             onMessageReceived(chatMessage)
                         }
                     }
                 }
                 "phx_reply" -> {
                     val status = payload.optString("status")
-                    Log.d(TAG, "Phoenix reply status: $status")
+                    val response = payload.optJSONObject("response") ?: JSONObject()
+                    if (status == "ok") {
+                        isSubscribed = true
+                        Log.d(TAG, "REALTIME_JOIN_SUCCESS: topic=${json.optString("topic")}, ref=${json.optString("ref")}")
+                    } else {
+                        isSubscribed = false
+                        Log.w(TAG, "REALTIME_JOIN_ERROR: status=$status, response=$response")
+                        onError(Exception("Realtime join failed: $status"))
+                    }
                 }
                 "phx_error" -> {
+                    isSubscribed = false
                     Log.w(TAG, "Phoenix channel error received: $payload")
                 }
                 "phx_close" -> {
+                    isSubscribed = false
                     Log.d(TAG, "Phoenix channel closed")
                 }
             }
