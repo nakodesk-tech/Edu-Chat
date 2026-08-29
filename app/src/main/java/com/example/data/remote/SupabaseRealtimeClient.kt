@@ -3,29 +3,27 @@ package com.example.data.remote
 import android.content.Context
 import android.util.Log
 import com.example.data.model.ChatMessage
+import io.github.jan.supabase.createSupabaseClient
+import io.github.jan.supabase.realtime.PostgresAction
+import io.github.jan.supabase.realtime.Realtime
+import io.github.jan.supabase.realtime.RealtimeChannel
+import io.github.jan.supabase.realtime.channel
+import io.github.jan.supabase.realtime.postgresChangeFlow
+import io.github.jan.supabase.realtime.realtime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Response
-import okhttp3.WebSocket
-import okhttp3.WebSocketListener
-import org.json.JSONArray
-import org.json.JSONObject
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Lightweight Supabase Realtime Phoenix WebSocket Client.
- * Connects to Supabase Realtime Gateway and subscribes to postgres_changes
- * on public.messages for a specific group_id using the authenticated user's JWT.
+ * Supabase Realtime Client using official io.github.jan-tennert.supabase:realtime-kt SDK.
+ * Subscribes to postgres_changes on public.messages for a specific group_id
+ * using the authenticated user's JWT.
  */
 class SupabaseRealtimeClient(
     private val context: Context,
@@ -35,50 +33,17 @@ class SupabaseRealtimeClient(
 ) {
     companion object {
         private const val TAG = "SupabaseRealtime"
-        private const val HEARTBEAT_INTERVAL_MS = 25000L
-        private const val MAX_RECONNECT_DELAY_MS = 10000L
-        private const val INITIAL_RECONNECT_DELAY_MS = 2000L
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val refCounter = AtomicInteger(1)
-    private var webSocket: WebSocket? = null
-    private var heartbeatJob: Job? = null
-    private var reconnectJob: Job? = null
-    
-    @Volatile
-    private var isClosed = false
-    
-    @Volatile
-    private var isConnected = false
-
-    @Volatile
-    private var isSubscribed = false
-    
-    private var currentGroupId: String? = null
-    private var reconnectAttempts = 0
-
-    private val okHttpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(0, TimeUnit.MILLISECONDS) // Indefinite read for WebSocket
-        .writeTimeout(15, TimeUnit.SECONDS)
-        .pingInterval(20, TimeUnit.SECONDS) // OkHttp-level ping
-        .build()
-
-    private fun nextRef(): String = refCounter.getAndIncrement().toString()
+    private var subscriptionJob: Job? = null
+    private var activeChannel: RealtimeChannel? = null
 
     /**
-     * Start subscription for a specific group's messages.
+     * Start subscription for a specific group's messages using official Realtime SDK.
      */
     fun subscribeToGroupMessages(groupId: String) {
         if (groupId.isBlank()) return
-        currentGroupId = groupId
-        isClosed = false
-        connect()
-    }
-
-    private fun connect() {
-        if (isClosed) return
 
         val rawUrl = SupabaseConfig.getSupabaseUrl(context)
         val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
@@ -88,50 +53,76 @@ class SupabaseRealtimeClient(
             return
         }
 
-        // Validate that accessToken is a valid JWT with 3 dot-separated non-empty parts and not a mock/opaque token
+        // Validate that accessToken is a real JWT (3 non-empty dot-separated segments)
         if (!isValidJwt(accessToken)) {
             Log.w(TAG, "Cannot connect to Realtime: access token is not a valid JWT")
             return
         }
 
-        val baseHttpUrl = (if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) {
+        val formattedUrl = if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) {
             rawUrl
         } else {
             "https://$rawUrl"
-        }).trimEnd('/').toHttpUrlOrNull()
+        }.trimEnd('/')
 
-        if (baseHttpUrl == null) {
-            Log.e(TAG, "Invalid Supabase URL format for Realtime")
-            return
-        }
+        subscriptionJob?.cancel()
+        subscriptionJob = scope.launch {
+            try {
+                val client = createSupabaseClient(
+                    supabaseUrl = formattedUrl,
+                    supabaseKey = anonKey
+                ) {
+                    install(Realtime)
+                }
 
-        // Build WebSocket URL with safely encoded query parameters via HttpUrl.Builder
-        val httpUrlWithParams = baseHttpUrl.newBuilder()
-            .addPathSegment("realtime")
-            .addPathSegment("v1")
-            .addPathSegment("websocket")
-            .addQueryParameter("apikey", anonKey)
-            .addQueryParameter("token", accessToken)
-            .addQueryParameter("vsn", "1.0.0")
-            .build()
+                // Connect to realtime with user JWT
+                client.realtime.setAuth(accessToken)
+                client.realtime.connect()
 
-        val wsUrl = httpUrlWithParams.toString()
-            .replaceFirst("https://", "wss://")
-            .replaceFirst("http://", "ws://")
+                val channelTopic = "messages-$groupId"
+                val channel = client.realtime.channel(channelTopic)
+                activeChannel = channel
 
-        val request = Request.Builder()
-            .url(wsUrl)
-            .header("apikey", anonKey)
-            .header("Authorization", "Bearer $accessToken")
-            .build()
+                val insertFlow = channel.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
+                    table = "messages"
+                }
 
-        try {
-            webSocket?.cancel()
-            webSocket = okHttpClient.newWebSocket(request, createWebSocketListener())
-        } catch (e: Exception) {
-            Log.e(TAG, "Error initiating WebSocket connection", e)
-            onError(e)
-            scheduleReconnect()
+                channel.subscribe()
+                Log.d(TAG, "Subscribed to official Realtime channel: $channelTopic for group $groupId")
+
+                insertFlow.collect { action ->
+                    try {
+                        val record: JsonObject = action.record
+                        val id = record["id"]?.jsonPrimitive?.content ?: ""
+                        val msgGroupId = record["group_id"]?.jsonPrimitive?.content ?: ""
+                        val senderId = record["sender_id"]?.jsonPrimitive?.content ?: ""
+                        val content = record["content"]?.jsonPrimitive?.content ?: ""
+                        val createdAt = record["created_at"]?.jsonPrimitive?.content
+                        val updatedAt = record["updated_at"]?.jsonPrimitive?.content
+                        val isDeleted = record["is_deleted"]?.jsonPrimitive?.booleanOrNull ?: false
+
+                        if (id.isNotBlank() && content.isNotBlank() && !isDeleted && msgGroupId == groupId) {
+                            val chatMessage = ChatMessage(
+                                id = id,
+                                groupId = msgGroupId,
+                                senderId = senderId,
+                                content = content,
+                                createdAt = createdAt,
+                                updatedAt = updatedAt,
+                                isDeleted = isDeleted,
+                                senderProfile = null
+                            )
+                            Log.d(TAG, "Realtime SDK received INSERT: id=$id, group=$msgGroupId")
+                            onMessageReceived(chatMessage)
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Error parsing Realtime PostgresAction.Insert: ${e.message}")
+                    }
+                }
+            } catch (e: Throwable) {
+                Log.e(TAG, "Error in official Realtime subscription", e)
+                onError(e)
+            }
         }
     }
 
@@ -144,237 +135,16 @@ class SupabaseRealtimeClient(
         return parts.size == 3 && parts.all { it.isNotBlank() }
     }
 
-    private fun createWebSocketListener(): WebSocketListener {
-        return object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: Response) {
-                Log.d(TAG, "WEBSOCKET_OPEN: connected successfully to Supabase Realtime")
-                isConnected = true
-                reconnectAttempts = 0
-                
-                // Start heartbeat loop
-                startHeartbeat()
-
-                // Join Postgres Changes channel for current group
-                val groupId = currentGroupId
-                if (!groupId.isNullOrBlank()) {
-                    sendPhoenixJoin(groupId)
-                }
-            }
-
-            override fun onMessage(webSocket: WebSocket, text: String) {
-                handleIncomingMessage(text)
-            }
-
-            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                Log.d(TAG, "WEBSOCKET_CLOSING: code=$code, reason=$reason")
-                isConnected = false
-                isSubscribed = false
-            }
-
-            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                Log.d(TAG, "REALTIME_DISCONNECTED: code=$code, reason=$reason")
-                isConnected = false
-                isSubscribed = false
-                if (!isClosed) {
-                    scheduleReconnect()
-                }
-            }
-
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                Log.w(TAG, "WEBSOCKET_FAILURE: ${t.message}")
-                isConnected = false
-                isSubscribed = false
-                onError(t)
-                if (!isClosed) {
-                    scheduleReconnect()
-                }
-            }
-        }
-    }
-
-    private fun sendPhoenixJoin(groupId: String) {
-        val topic = "realtime:messages"
-        val ref = nextRef()
-
-        try {
-            val postgresChangesArray = JSONArray().apply {
-                put(JSONObject().apply {
-                    put("id", 1)
-                    put("event", "INSERT")
-                    put("schema", "public")
-                    put("table", "messages")
-                    put("filter", "group_id=eq.$groupId")
-                })
-            }
-
-            val configObj = JSONObject().apply {
-                put("broadcast", JSONObject().apply { put("self", false) })
-                put("presence", JSONObject().apply { put("key", "") })
-                put("postgres_changes", postgresChangesArray)
-            }
-
-            val payloadObj = JSONObject().apply {
-                put("config", configObj)
-                put("access_token", accessToken)
-            }
-
-            val joinMessage = JSONObject().apply {
-                put("topic", topic)
-                put("event", "phx_join")
-                put("payload", payloadObj)
-                put("ref", ref)
-                put("join_ref", ref)
-            }
-
-            webSocket?.send(joinMessage.toString())
-            Log.d(TAG, "CHANNEL_JOIN_SENT: topic=$topic, filter=group_id=eq.$groupId, ref=$ref")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error sending phx_join", e)
-        }
-    }
-
-    private fun startHeartbeat() {
-        heartbeatJob?.cancel()
-        heartbeatJob = scope.launch {
-            while (isActive && !isClosed) {
-                delay(HEARTBEAT_INTERVAL_MS)
-                if (isConnected && !isClosed) {
-                    try {
-                        val heartbeat = JSONObject().apply {
-                            put("topic", "phoenix")
-                            put("event", "heartbeat")
-                            put("payload", JSONObject())
-                            put("ref", nextRef())
-                        }
-                        webSocket?.send(heartbeat.toString())
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Error sending Phoenix heartbeat: ${e.message}")
-                    }
-                }
-            }
-        }
-    }
-
-    private fun handleIncomingMessage(text: String) {
-        try {
-            val json = JSONObject(text)
-            val event = json.optString("event")
-            val payload = json.optJSONObject("payload") ?: JSONObject()
-
-            when (event) {
-                "postgres_changes" -> {
-                    Log.d(TAG, "POSTGRES_CHANGE_RECEIVED: topic=${json.optString("topic")}")
-                    val record = extractRecord(payload)
-                    if (record != null) {
-                        val id = record.optString("id", "")
-                        val groupId = record.optString("group_id", "")
-                        val senderId = record.optString("sender_id", "")
-                        val content = record.optString("content", "")
-                        val createdAt = record.optString("created_at", "").takeIf { it.isNotBlank() }
-                        val updatedAt = record.optString("updated_at", "").takeIf { it.isNotBlank() }
-                        val isDeleted = record.optBoolean("is_deleted", false)
-
-                        val targetGroupId = currentGroupId
-                        if (id.isNotBlank() && content.isNotBlank() && !isDeleted &&
-                            (targetGroupId == null || groupId == targetGroupId)
-                        ) {
-                            Log.d(TAG, "MESSAGE_PARSED: id=$id, groupId=$groupId, senderId=$senderId")
-                            val chatMessage = ChatMessage(
-                                id = id,
-                                groupId = groupId,
-                                senderId = senderId,
-                                content = content,
-                                createdAt = createdAt,
-                                updatedAt = updatedAt,
-                                isDeleted = isDeleted,
-                                senderProfile = null
-                            )
-                            Log.d(TAG, "MESSAGE_EMITTED: id=$id to flow callback")
-                            onMessageReceived(chatMessage)
-                        }
-                    }
-                }
-                "phx_reply" -> {
-                    val status = payload.optString("status")
-                    val response = payload.optJSONObject("response") ?: JSONObject()
-                    if (status == "ok") {
-                        isSubscribed = true
-                        Log.d(TAG, "REALTIME_JOIN_SUCCESS: topic=${json.optString("topic")}, ref=${json.optString("ref")}")
-                    } else {
-                        isSubscribed = false
-                        Log.w(TAG, "REALTIME_JOIN_ERROR: status=$status, response=$response")
-                        onError(Exception("Realtime join failed: $status"))
-                    }
-                }
-                "phx_error" -> {
-                    isSubscribed = false
-                    Log.w(TAG, "Phoenix channel error received: $payload")
-                }
-                "phx_close" -> {
-                    isSubscribed = false
-                    Log.d(TAG, "Phoenix channel closed")
-                }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Error parsing incoming Realtime message: ${e.message}")
-        }
-    }
-
-    private fun extractRecord(payload: JSONObject): JSONObject? {
-        val dataObj = payload.optJSONObject("data")
-        if (dataObj != null) {
-            val rec = dataObj.optJSONObject("record") ?: dataObj.optJSONObject("new")
-            if (rec != null) return rec
-        }
-        val record = payload.optJSONObject("record")
-        if (record != null) return record
-        val newRecord = payload.optJSONObject("new")
-        if (newRecord != null) return newRecord
-        if (payload.has("id") && payload.has("content")) return payload
-        return null
-    }
-
-    private fun scheduleReconnect() {
-        if (isClosed) return
-        reconnectJob?.cancel()
-        reconnectJob = scope.launch {
-            val delayMs = (INITIAL_RECONNECT_DELAY_MS * (1 shl reconnectAttempts.coerceAtMost(3)))
-                .coerceAtMost(MAX_RECONNECT_DELAY_MS)
-            reconnectAttempts++
-            Log.d(TAG, "Scheduling reconnect attempt $reconnectAttempts in ${delayMs}ms")
-            delay(delayMs)
-            if (!isClosed && isActive) {
-                connect()
-            }
-        }
-    }
-
     /**
-     * Cleanly leave channel, stop heartbeats, and close WebSocket.
+     * Cleanly leave channel, unsubscribe, and close scope.
      */
     fun disconnect() {
-        isClosed = true
-        isConnected = false
-        reconnectJob?.cancel()
-        heartbeatJob?.cancel()
-
+        subscriptionJob?.cancel()
         scope.launch {
             try {
-                val leaveMsg = JSONObject().apply {
-                    put("topic", "realtime:public:messages")
-                    put("event", "phx_leave")
-                    put("payload", JSONObject())
-                    put("ref", nextRef())
-                }
-                webSocket?.send(leaveMsg.toString())
+                activeChannel?.unsubscribe()
             } catch (_: Exception) {
             }
-
-            try {
-                webSocket?.close(1000, "Client closed")
-            } catch (_: Exception) {
-            }
-
             try {
                 scope.cancel()
             } catch (_: Exception) {

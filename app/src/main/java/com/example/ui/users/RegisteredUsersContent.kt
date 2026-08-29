@@ -631,6 +631,25 @@ fun RegisteredUserCard(
                         )
                     }
 
+                    // Standard / Class Badge
+                    if (!user.standard.isNullOrBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = PrimaryIndigoContainer,
+                            border = BorderStroke(0.5.dp, PrimaryIndigo.copy(alpha = 0.35f))
+                        ) {
+                            Text(
+                                text = user.standard,
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = PrimaryIndigo,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
                     // Status Badge
                     Surface(
                         shape = RoundedCornerShape(6.dp),

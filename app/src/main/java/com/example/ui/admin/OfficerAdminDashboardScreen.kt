@@ -1,5 +1,6 @@
 package com.example.ui.admin
 
+import com.example.ui.common.ProfileScreenContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -829,74 +830,11 @@ fun OfficerProfileTabContent(
     onEditProfile: () -> Unit,
     onLogout: () -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        OfficerHeaderCard(
-            profile = profile,
-            onLogout = onLogout
-        )
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            border = BorderStroke(1.dp, BorderSubtle)
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = "माझे प्रोफाइल तपशील",
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary
-                    )
-                )
-
-                Text(
-                    text = "नाव: ${profile?.fullName ?: "-"}",
-                    style = MaterialTheme.typography.bodyMedium.copy(color = TextPrimary)
-                )
-                Text(
-                    text = "ईमेल: ${profile?.email ?: "-"}",
-                    style = MaterialTheme.typography.bodyMedium.copy(color = TextPrimary)
-                )
-                Text(
-                    text = "मोबाईल: ${profile?.mobile ?: "-"}",
-                    style = MaterialTheme.typography.bodyMedium.copy(color = TextPrimary)
-                )
-                Text(
-                    text = "भूमिका: ${if (profile?.isPrimaryAdmin == true) "प्राथमिक अधिकारी प्रशासक (Primary Officer Admin)" else "अधिकारी प्रशासक (Officer Admin)"}",
-                    style = MaterialTheme.typography.bodyMedium.copy(color = TextSecondary)
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Button(
-                    onClick = onEditProfile,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("officer_edit_profile_button"),
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryIndigo),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("माहिती बदला (Edit Profile)")
-                }
-            }
-        }
-    }
+    ProfileScreenContent(
+        profile = profile,
+        onEditProfile = onEditProfile,
+        onLogout = onLogout
+    )
 }
 
 /**

@@ -125,6 +125,16 @@ interface SupabaseAuthApi {
     ): Response<List<School>>
 
     @GET("rest/v1/profiles")
+    suspend fun getStudents(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") bearerToken: String,
+        @Query("role") roleFilter: String = "eq.student",
+        @Query("school_id") schoolIdFilter: String? = null,
+        @Query("select") select: String = "*",
+        @Query("order") order: String = "full_name.asc"
+    ): Response<List<UserProfile>>
+
+    @GET("rest/v1/profiles")
     suspend fun getTeachersBySchool(
         @Header("apikey") apiKey: String,
         @Header("Authorization") bearerToken: String,

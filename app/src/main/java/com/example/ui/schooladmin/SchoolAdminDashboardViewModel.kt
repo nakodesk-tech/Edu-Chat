@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 enum class SchoolAdminTab(val marathiTitle: String) {
     CHATS("चॅट्स"),
     TEACHERS("शिक्षक"),
+    STUDENTS("विद्यार्थी"),
     MY_SCHOOL("माझी शाळा"),
     MY_PROFILE("माझे प्रोफाइल")
 }

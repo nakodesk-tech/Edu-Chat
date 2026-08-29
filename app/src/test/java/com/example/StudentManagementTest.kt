@@ -1,0 +1,270 @@
+package com.example
+
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
+import com.example.data.local.SessionManager
+import com.example.data.local.SimulatedDatabase
+import com.example.data.local.SimulatedDbUser
+import com.example.data.model.AuthSession
+import com.example.data.model.UserProfile
+import com.example.data.model.UserRole
+import com.example.data.repository.AuthRepository
+import com.example.data.repository.AuthResult
+import com.example.data.repository.StudentRepository
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.*
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
+class StudentManagementTest {
+
+    private lateinit var context: Context
+    private lateinit var authRepository: AuthRepository
+    private lateinit var studentRepository: StudentRepository
+    private lateinit var sessionManager: SessionManager
+
+    private val puneSchoolId = "s0000000-0001-4000-8000-000000000001"
+
+    private lateinit var teacherSession: AuthSession
+
+    @Before
+    fun setup() = runBlocking {
+        context = ApplicationProvider.getApplicationContext()
+        SimulatedDatabase.reset()
+        sessionManager = SessionManager(context)
+        sessionManager.clearSession()
+        authRepository = AuthRepository(context)
+        studentRepository = StudentRepository(context)
+
+        // Teacher session setup
+        val teacherProfile = UserProfile(
+            id = "t-pune-001",
+            fullName = "Sachin Patil Sir",
+            email = "teacher.pune@educhat.edu",
+            mobile = "9822011223",
+            role = "teacher",
+            isActive = true,
+            schoolId = puneSchoolId,
+            createdAt = "2026-01-01T00:00:00Z",
+            updatedAt = "2026-01-01T00:00:00Z"
+        )
+        SimulatedDatabase.addUser(
+            SimulatedDbUser(email = teacherProfile.email!!, password = "password123", profile = teacherProfile)
+        )
+
+        teacherSession = AuthSession(
+            accessToken = "mock_teacher_jwt",
+            refreshToken = "mock_refresh",
+            profile = teacherProfile
+        )
+        sessionManager.saveSession(teacherSession)
+    }
+
+    @Test
+    fun testStudentRegistrationSuccess() = runBlocking {
+        val regResult = studentRepository.registerStudent(
+            fullName = "Ananya Joshi (अनन्या जोशी)",
+            email = "ananya.joshi@educhat.edu",
+            password = "password123",
+            mobile = "9822123456",
+            standard = "इयत्ता १० वी अ (Class 10-A)",
+            schoolId = puneSchoolId
+        )
+
+        assertTrue("Student registration should succeed", regResult.isSuccess)
+        val created = regResult.getOrNull()
+        assertNotNull(created)
+        assertEquals("Ananya Joshi (अनन्या जोशी)", created?.fullName)
+        assertEquals("ananya.joshi@educhat.edu", created?.email)
+        assertEquals("student", created?.role)
+        assertEquals("इयत्ता १० वी अ (Class 10-A)", created?.standard)
+        assertEquals(puneSchoolId, created?.schoolId)
+        assertTrue(created?.isActive == true)
+
+        // Verify newly registered student can log in
+        val loginResult = authRepository.login("ananya.joshi@educhat.edu", "password123", UserRole.STUDENT)
+        assertTrue("Newly registered student should be able to log in", loginResult is AuthResult.Success)
+    }
+
+    @Test
+    fun testStudentRegistrationValidation_BlankName() = runBlocking {
+        val result = studentRepository.registerStudent(
+            fullName = "   ",
+            email = "blank.name@educhat.edu",
+            password = "password123",
+            mobile = null,
+            standard = "इयत्ता ९ वी",
+            schoolId = puneSchoolId
+        )
+        assertTrue("Registration with blank name should fail", result.isFailure)
+    }
+
+    @Test
+    fun testStudentRegistrationValidation_InvalidEmail() = runBlocking {
+        val result = studentRepository.registerStudent(
+            fullName = "Test Student",
+            email = "invalid-email-format",
+            password = "password123",
+            mobile = null,
+            standard = "इयत्ता ९ वी",
+            schoolId = puneSchoolId
+        )
+        assertTrue("Registration with invalid email should fail", result.isFailure)
+    }
+
+    @Test
+    fun testStudentRegistrationValidation_ShortPassword() = runBlocking {
+        val result = studentRepository.registerStudent(
+            fullName = "Test Student",
+            email = "valid@educhat.edu",
+            password = "123", // Short password
+            mobile = null,
+            standard = "इयत्ता ९ वी",
+            schoolId = puneSchoolId
+        )
+        assertTrue("Registration with short password should fail", result.isFailure)
+    }
+
+    @Test
+    fun testStudentRegistrationValidation_DuplicateEmail() = runBlocking {
+        // student@educhat.edu is already seeded
+        val result = studentRepository.registerStudent(
+            fullName = "Duplicate Student",
+            email = "student@educhat.edu",
+            password = "password123",
+            mobile = null,
+            standard = "इयत्ता ९ वी",
+            schoolId = puneSchoolId
+        )
+        assertTrue("Registration with duplicate email should fail", result.isFailure)
+    }
+
+    @Test
+    fun testGetStudentsList() = runBlocking {
+        val listResult = studentRepository.getStudents(puneSchoolId)
+        assertTrue("Get students should succeed", listResult.isSuccess)
+        val students = listResult.getOrDefault(emptyList())
+        assertFalse("Students list should not be empty", students.isEmpty())
+        assertTrue("All entries should be students", students.all { it.role.equals("student", ignoreCase = true) })
+    }
+
+    @Test
+    fun testUpdateStudentProfile() = runBlocking {
+        val students = studentRepository.getStudents(puneSchoolId).getOrDefault(emptyList())
+        val target = students.first()
+
+        val updateResult = studentRepository.updateStudent(
+            studentId = target.id,
+            fullName = "Updated Name (सुधारित नाव)",
+            mobile = "9822998877",
+            standard = "इयत्ता १० वी ब (Class 10-B)",
+            schoolId = target.schoolId,
+            isActive = true
+        )
+
+        assertTrue("Update student should succeed", updateResult.isSuccess)
+        val updated = updateResult.getOrNull()
+        assertEquals("Updated Name (सुधारित नाव)", updated?.fullName)
+        assertEquals("9822998877", updated?.mobile)
+        assertEquals("इयत्ता १० वी ब (Class 10-B)", updated?.standard)
+    }
+
+    @Test
+    fun testToggleStudentStatus_DeactivateAndReactivate() = runBlocking {
+        val students = studentRepository.getStudents(puneSchoolId).getOrDefault(emptyList())
+        val target = students.first { it.isActive }
+
+        // Deactivate
+        val deactResult = studentRepository.toggleStudentStatus(target.id, false)
+        assertTrue("Deactivate should succeed", deactResult.isSuccess)
+        assertFalse(deactResult.getOrNull()!!.isActive)
+
+        // Verify deactivated student cannot log in
+        val loginAttempt = authRepository.login(target.email!!, "password123", UserRole.STUDENT)
+        assertTrue("Deactivated student login should be rejected with Error", loginAttempt is AuthResult.Error)
+
+        // Reactivate
+        val reactResult = studentRepository.toggleStudentStatus(target.id, true)
+        assertTrue("Reactivation should succeed", reactResult.isSuccess)
+        assertTrue(reactResult.getOrNull()!!.isActive)
+
+        // Login should now work
+        val loginSuccess = authRepository.login(target.email!!, "password123", UserRole.STUDENT)
+        assertTrue("Reactivated student should be able to log in", loginSuccess is AuthResult.Success)
+    }
+
+    @Test
+    fun testDeleteStudent() = runBlocking {
+        // Create student to delete
+        val created = studentRepository.registerStudent(
+            fullName = "Temporary Student",
+            email = "temp.student@educhat.edu",
+            password = "password123",
+            mobile = null,
+            standard = "इयत्ता ५ वी",
+            schoolId = puneSchoolId
+        ).getOrNull()!!
+
+        val deleteResult = studentRepository.deleteStudent(created.id)
+        assertTrue("Delete student should succeed", deleteResult.isSuccess)
+
+        // Verify deleted from list
+        val currentStudents = studentRepository.getStudents(puneSchoolId).getOrDefault(emptyList())
+        assertFalse("Deleted student should not exist in list", currentStudents.any { it.id == created.id })
+    }
+
+    @Test
+    fun testStudentManagementViewModel_SingleArgConstructorInstantiation() {
+        val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+        // Verify ViewModel can be instantiated with single Application parameter (AndroidViewModelFactory contract)
+        val constructor = com.example.ui.students.StudentManagementViewModel::class.java.getConstructor(android.app.Application::class.java)
+        assertNotNull("StudentManagementViewModel must have a single Application constructor", constructor)
+        val viewModel = constructor.newInstance(app)
+        assertNotNull(viewModel)
+        assertNotNull(viewModel.uiState.value)
+    }
+
+    @Test
+    fun testSchoolAdminCanAccessAndManageStudents() = runBlocking {
+        val puneAdminProfile = UserProfile(
+            id = "sa-pune-001",
+            fullName = "Pune School Principal",
+            email = "principal.pune@educhat.edu",
+            mobile = "9800000001",
+            role = "school_admin",
+            isActive = true,
+            schoolId = puneSchoolId,
+            createdAt = "2026-01-01T00:00:00Z",
+            updatedAt = "2026-01-01T00:00:00Z"
+        )
+        SimulatedDatabase.addUser(
+            SimulatedDbUser(email = puneAdminProfile.email!!, password = "password123", profile = puneAdminProfile)
+        )
+
+        // School Admin logs in
+        val loginResult = authRepository.login("principal.pune@educhat.edu", "password123", UserRole.SCHOOL_ADMIN)
+        assertTrue("School Admin login should succeed", loginResult is AuthResult.Success)
+
+        // School Admin registers a student
+        val regResult = studentRepository.registerStudent(
+            fullName = "Rohan Shinde",
+            email = "rohan.shinde@educhat.edu",
+            password = "password123",
+            mobile = "9822334455",
+            standard = "इयत्ता ९ वी ब (Class 9-B)",
+            schoolId = puneSchoolId
+        )
+        assertTrue("School Admin can register student", regResult.isSuccess)
+
+        // School Admin retrieves students list for their school
+        val studentsResult = studentRepository.getStudents(puneSchoolId)
+        assertTrue(studentsResult.isSuccess)
+        val students = studentsResult.getOrDefault(emptyList())
+        assertTrue(students.any { it.email == "rohan.shinde@educhat.edu" })
+    }
+}

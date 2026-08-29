@@ -849,6 +849,17 @@ open class FakeSupabaseDatabaseEngine : SupabaseAuthApi {
     override suspend fun officerAdminCreateSchoolRpc(apiKey: String, bearerToken: String, request: CreateSchoolRequest): Response<School> = Response.success(null)
     override suspend fun officerAdminUpdateSchoolRpc(apiKey: String, bearerToken: String, request: UpdateSchoolRequest): Response<School> = Response.success(null)
     override suspend fun patchProfile(apiKey: String, bearerToken: String, idFilter: String, updates: Map<String, Any?>): Response<List<UserProfile>> = Response.success(emptyList())
+    override suspend fun getStudents(
+        apiKey: String,
+        bearerToken: String,
+        roleFilter: String,
+        schoolIdFilter: String?,
+        select: String,
+        order: String
+    ): Response<List<UserProfile>> {
+        val studentList = profiles.filter { it.role.equals("student", ignoreCase = true) }
+        return Response.success(studentList)
+    }
     override suspend fun getGroupMessages(apiKey: String, bearerToken: String, groupIdFilter: String, isDeletedFilter: String, select: String, order: String): Response<List<ChatMessage>> {
         val callerId = getCallerId(bearerToken)
         val caller = profiles.firstOrNull { it.id == callerId }

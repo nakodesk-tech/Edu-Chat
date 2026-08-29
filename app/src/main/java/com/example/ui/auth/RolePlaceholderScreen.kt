@@ -68,6 +68,8 @@ import com.example.data.model.AuthSession
 import com.example.data.model.UserRole
 import com.example.ui.chat.ChatGroupViewModel
 import com.example.ui.chat.ChatsTabContent
+import com.example.ui.students.StudentManagementContent
+import com.example.ui.students.StudentManagementViewModel
 import com.example.ui.theme.AccentAmber
 import com.example.ui.theme.AccentAmberContainer
 import com.example.ui.theme.BorderSubtle
@@ -88,6 +90,7 @@ fun RolePlaceholderScreen(
     val profile = session.profile
     val role = profile.userRole
     val chatViewModel: ChatGroupViewModel = viewModel()
+    val studentViewModel: StudentManagementViewModel = viewModel()
     var selectedTabIndex by remember { mutableIntStateOf(0) }
 
     val roleColor = when (role) {
@@ -299,13 +302,17 @@ fun RolePlaceholderScreen(
                     ChatsTabContent(viewModel = chatViewModel)
                 }
                 1 -> {
-                    RolePlaceholderUpcomingTab(
-                        title = tab2Title,
-                        subtitle = "हे वैशिष्ट्य पुढील टप्प्यात उपलब्ध होईल (Coming Soon in next phase)",
-                        icon = tab2Icon,
-                        roleColor = roleColor,
-                        roleContainerColor = roleContainerColor
-                    )
+                    if (role == UserRole.TEACHER) {
+                        StudentManagementContent(viewModel = studentViewModel)
+                    } else {
+                        RolePlaceholderUpcomingTab(
+                            title = tab2Title,
+                            subtitle = "हे वैशिष्ट्य पुढील टप्प्यात उपलब्ध होईल (Coming Soon in next phase)",
+                            icon = tab2Icon,
+                            roleColor = roleColor,
+                            roleContainerColor = roleContainerColor
+                        )
+                    }
                 }
                 2 -> {
                     RolePlaceholderUpcomingTab(

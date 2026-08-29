@@ -90,14 +90,63 @@ object SimulatedDatabase {
                     password = "password123",
                     profile = UserProfile(
                         id = "d0a1b2c3-0002-4000-8000-000000000002",
-                        fullName = "Alex Rivera",
+                        fullName = "Alex Rivera (प्रतीक मोरे)",
                         email = "student@educhat.edu",
                         mobile = "9822054321",
+                        standard = "इयत्ता १० वी (Class 10-A)",
                         role = "student",
                         isActive = true,
                         schoolId = "s0000000-0001-4000-8000-000000000001",
                         createdAt = "2026-02-01T09:30:00Z",
                         updatedAt = "2026-02-01T09:30:00Z"
+                    )
+                ),
+                SimulatedDbUser(
+                    email = "snehal.patil@educhat.edu",
+                    password = "password123",
+                    profile = UserProfile(
+                        id = "d0a1b2c3-0005-4000-8000-000000000005",
+                        fullName = "Snehal Patil (स्नेहल पाटील)",
+                        email = "snehal.patil@educhat.edu",
+                        mobile = "9822077889",
+                        standard = "इयत्ता १० वी (Class 10-A)",
+                        role = "student",
+                        isActive = true,
+                        schoolId = "s0000000-0001-4000-8000-000000000001",
+                        createdAt = "2026-02-05T11:00:00Z",
+                        updatedAt = "2026-02-05T11:00:00Z"
+                    )
+                ),
+                SimulatedDbUser(
+                    email = "rohan.deshmukh@educhat.edu",
+                    password = "password123",
+                    profile = UserProfile(
+                        id = "d0a1b2c3-0006-4000-8000-000000000006",
+                        fullName = "Rohan Deshmukh (रोहन देशमुख)",
+                        email = "rohan.deshmukh@educhat.edu",
+                        mobile = "9822033445",
+                        standard = "इयत्ता ९ वी (Class 9-B)",
+                        role = "student",
+                        isActive = true,
+                        schoolId = "s0000000-0001-4000-8000-000000000001",
+                        createdAt = "2026-02-10T14:20:00Z",
+                        updatedAt = "2026-02-10T14:20:00Z"
+                    )
+                ),
+                SimulatedDbUser(
+                    email = "pooja.shinde@educhat.edu",
+                    password = "password123",
+                    profile = UserProfile(
+                        id = "d0a1b2c3-0007-4000-8000-000000000007",
+                        fullName = "Pooja Shinde (पूजा शिंदे)",
+                        email = "pooja.shinde@educhat.edu",
+                        mobile = "9822066778",
+                        standard = "इयत्ता ८ वी (Class 8-C)",
+                        role = "student",
+                        isActive = true,
+                        schoolId = "s0000000-0001-4000-8000-000000000001",
+                        createdAt = "2026-02-12T16:00:00Z",
+                        updatedAt = "2026-02-12T16:00:00Z"
                     )
                 ),
                 SimulatedDbUser(
@@ -121,9 +170,10 @@ object SimulatedDatabase {
                     password = "password123",
                     profile = UserProfile(
                         id = "d0a1b2c3-0004-4000-8000-000000000004",
-                        fullName = "John Suspended",
+                        fullName = "John Suspended (अमित पवार)",
                         email = "inactive@educhat.edu",
                         mobile = "9899001122",
+                        standard = "इयत्ता १० वी (Class 10)",
                         role = "student",
                         isActive = false,
                         schoolId = "s0000000-0002-4000-8000-000000000002",
@@ -382,6 +432,150 @@ object SimulatedDatabase {
 
         users[index] = existing.copy(profile = updatedProfile)
         return Result.success(updatedProfile)
+    }
+
+    // ==========================================
+    // Phase C: Student Management & Registration
+    // ==========================================
+
+    @Synchronized
+    fun getStudents(schoolId: String? = null): Result<List<UserProfile>> {
+        val studentProfiles = users
+            .asSequence()
+            .map { it.profile }
+            .filter { it.role.equals("student", ignoreCase = true) }
+            .filter { if (schoolId.isNullOrBlank()) true else it.schoolId == schoolId }
+            .toList()
+        return Result.success(studentProfiles)
+    }
+
+    @Synchronized
+    fun createStudent(
+        fullName: String,
+        email: String,
+        password: String,
+        mobile: String?,
+        standard: String?,
+        schoolId: String
+    ): Result<UserProfile> {
+        val trimmedEmail = email.trim().lowercase()
+        val trimmedName = fullName.trim()
+
+        if (trimmedName.isBlank()) {
+            return Result.failure(IllegalArgumentException("विद्यार्थ्याचे पूर्ण नाव आवश्यक आहे. (Full name is required)"))
+        }
+
+        if (trimmedEmail.isBlank() || !android.util.Patterns.EMAIL_ADDRESS.matcher(trimmedEmail).matches()) {
+            return Result.failure(IllegalArgumentException("कृपया वैध ईमेल पत्ता प्रविष्ट करा. (Invalid email)"))
+        }
+
+        if (password.length < 6) {
+            return Result.failure(IllegalArgumentException("पासवर्ड किमान ६ अक्षरांचा असावा. (Password must be >= 6 characters)"))
+        }
+
+        if (users.any { it.email.equals(trimmedEmail, ignoreCase = true) }) {
+            return Result.failure(IllegalArgumentException("हा ईमेल पत्ता आधीपासून नोंदणीकृत आहे. (Email already in use)"))
+        }
+
+        val targetSchool = schools.firstOrNull { it.id == schoolId }
+        if (targetSchool == null) {
+            return Result.failure(IllegalArgumentException("निवडलेली शाळा अस्तित्वात नाही. (School not found)"))
+        }
+
+        val newId = UUID.randomUUID().toString()
+        val now = "2026-02-26T10:00:00Z"
+        val profile = UserProfile(
+            id = newId,
+            fullName = trimmedName,
+            email = trimmedEmail,
+            mobile = mobile?.trim()?.ifBlank { null },
+            standard = standard?.trim()?.ifBlank { null },
+            role = "student",
+            isActive = true,
+            isPrimaryAdmin = false,
+            schoolId = schoolId,
+            createdAt = now,
+            updatedAt = now
+        )
+
+        users.add(0, SimulatedDbUser(email = trimmedEmail, password = password, profile = profile))
+        return Result.success(profile)
+    }
+
+    @Synchronized
+    fun updateStudent(
+        studentId: String,
+        fullName: String,
+        mobile: String?,
+        standard: String?,
+        schoolId: String?,
+        isActive: Boolean
+    ): Result<UserProfile> {
+        val index = users.indexOfFirst { it.profile.id == studentId }
+        if (index == -1) {
+            return Result.failure(NoSuchElementException("विद्यार्थी आढळला नाही. (Student not found)"))
+        }
+
+        val existing = users[index]
+        if (!existing.profile.role.equals("student", ignoreCase = true)) {
+            return Result.failure(SecurityException("Only students can be updated through this operation."))
+        }
+
+        val trimmedName = fullName.trim()
+        if (trimmedName.isBlank()) {
+            return Result.failure(IllegalArgumentException("पूर्ण नाव आवश्यक आहे. (Full name is required)"))
+        }
+
+        val now = "2026-02-26T10:00:00Z"
+        val updatedProfile = existing.profile.copy(
+            fullName = trimmedName,
+            mobile = mobile?.trim()?.ifBlank { null },
+            standard = standard?.trim()?.ifBlank { null },
+            schoolId = schoolId ?: existing.profile.schoolId,
+            isActive = isActive,
+            updatedAt = now
+        )
+
+        users[index] = existing.copy(profile = updatedProfile)
+        return Result.success(updatedProfile)
+    }
+
+    @Synchronized
+    fun toggleStudentStatus(studentId: String, isActive: Boolean): Result<UserProfile> {
+        val index = users.indexOfFirst { it.profile.id == studentId }
+        if (index == -1) {
+            return Result.failure(NoSuchElementException("विद्यार्थी आढळला नाही. (Student not found)"))
+        }
+
+        val existing = users[index]
+        if (!existing.profile.role.equals("student", ignoreCase = true)) {
+            return Result.failure(SecurityException("Only students can be updated through this operation."))
+        }
+
+        val now = "2026-02-26T10:00:00Z"
+        val updatedProfile = existing.profile.copy(
+            isActive = isActive,
+            updatedAt = now
+        )
+
+        users[index] = existing.copy(profile = updatedProfile)
+        return Result.success(updatedProfile)
+    }
+
+    @Synchronized
+    fun deleteStudent(studentId: String): Result<Boolean> {
+        val index = users.indexOfFirst { it.profile.id == studentId }
+        if (index == -1) {
+            return Result.failure(NoSuchElementException("विद्यार्थी आढळला नाही. (Student not found)"))
+        }
+
+        val existing = users[index]
+        if (!existing.profile.role.equals("student", ignoreCase = true)) {
+            return Result.failure(SecurityException("Only students can be deleted through this operation."))
+        }
+
+        users.removeAt(index)
+        return Result.success(true)
     }
 
     // ==========================================

@@ -1,5 +1,6 @@
 package com.example.ui.schooladmin
 
+import com.example.ui.common.ProfileScreenContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -38,6 +39,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Lock
@@ -47,6 +49,8 @@ import androidx.compose.material.icons.filled.Phone
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.chat.ChatGroupViewModel
 import com.example.ui.chat.ChatsTabContent
+import com.example.ui.students.StudentManagementContent
+import com.example.ui.students.StudentManagementViewModel
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.School
@@ -130,6 +134,7 @@ fun SchoolAdminDashboardScreen(
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val chatViewModel: ChatGroupViewModel = viewModel()
+    val studentViewModel: StudentManagementViewModel = viewModel()
 
     LaunchedEffect(uiState.snackbarMessage) {
         uiState.snackbarMessage?.let { msg ->
@@ -258,7 +263,35 @@ fun SchoolAdminDashboardScreen(
                     modifier = Modifier.testTag("tab_teachers")
                 )
 
-                // Tab 3: माझी शाळा
+                // Tab 3: विद्यार्थी
+                NavigationBarItem(
+                    selected = uiState.selectedTab == SchoolAdminTab.STUDENTS,
+                    onClick = { viewModel.selectTab(SchoolAdminTab.STUDENTS) },
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Default.People,
+                            contentDescription = "विद्यार्थी",
+                            modifier = Modifier.size(22.dp)
+                        )
+                    },
+                    label = {
+                        Text(
+                            text = SchoolAdminTab.STUDENTS.marathiTitle,
+                            fontWeight = if (uiState.selectedTab == SchoolAdminTab.STUDENTS) FontWeight.Bold else FontWeight.Normal,
+                            fontSize = 12.sp
+                        )
+                    },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = PrimaryIndigo,
+                        selectedTextColor = PrimaryIndigo,
+                        indicatorColor = PrimaryIndigoContainer,
+                        unselectedIconColor = TextTertiary,
+                        unselectedTextColor = TextSecondary
+                    ),
+                    modifier = Modifier.testTag("tab_students")
+                )
+
+                // Tab 4: माझी शाळा
                 NavigationBarItem(
                     selected = uiState.selectedTab == SchoolAdminTab.MY_SCHOOL,
                     onClick = { viewModel.selectTab(SchoolAdminTab.MY_SCHOOL) },
@@ -336,6 +369,9 @@ fun SchoolAdminDashboardScreen(
                         onReactivateTeacher = { viewModel.toggleTeacherStatus(it, true) },
                         onRefresh = { viewModel.loadTeachers() }
                     )
+                }
+                SchoolAdminTab.STUDENTS -> {
+                    StudentManagementContent(viewModel = studentViewModel)
                 }
                 SchoolAdminTab.MY_SCHOOL -> {
                     MySchoolTabContent(
@@ -1019,146 +1055,11 @@ private fun MyProfileTabContent(
     onEditProfile: () -> Unit,
     onLogout: () -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Text(
-            text = "माझे प्रोफाइल",
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Bold,
-            color = TextPrimary
-        )
-
-        Card(
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            border = BorderStroke(1.dp, BorderSubtle),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                // Avatar + Name + Role Badge
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = PrimaryIndigoContainer,
-                        modifier = Modifier.size(56.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.AccountCircle,
-                                contentDescription = null,
-                                tint = PrimaryIndigo,
-                                modifier = Modifier.size(36.dp)
-                            )
-                        }
-                    }
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = profile?.fullName ?: "शाळा प्रशासक",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TextPrimary
-                        )
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = AccentAmberContainer,
-                            modifier = Modifier.padding(top = 4.dp)
-                        ) {
-                            Text(
-                                text = "SCHOOL ADMIN (शाळा प्रशासक)",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = OnAccentAmberContainer,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
-                }
-
-                HorizontalDivider(color = BorderSubtle)
-
-                // Details List
-                ProfileDetailRow(
-                    icon = Icons.Default.Email,
-                    label = "ईमेल पत्ता",
-                    value = profile?.email ?: "-"
-                )
-
-                ProfileDetailRow(
-                    icon = Icons.Default.Phone,
-                    label = "मोबाईल नंबर",
-                    value = profile?.mobile ?: "नोंदणीकृत नाही"
-                )
-
-                ProfileDetailRow(
-                    icon = Icons.Default.Apartment,
-                    label = "असाइन केलेली शाळा",
-                    value = school?.name ?: "शाळा लोड होत आहे..."
-                )
-
-                ProfileDetailRow(
-                    icon = Icons.Default.CheckCircle,
-                    label = "खाते स्थिती",
-                    value = if (profile?.isActive == true) "सक्रिय (Active)" else "निष्क्रिय (Inactive)"
-                )
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                // Edit Profile Button
-                Button(
-                    onClick = onEditProfile,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryIndigo),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(46.dp)
-                        .testTag("btn_edit_profile")
-                ) {
-                    Icon(imageVector = Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(text = "माहिती अद्यतनित करा", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                }
-
-                // Logout Button
-                OutlinedButton(
-                    onClick = onLogout,
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, Color(0xFFEF4444)),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(46.dp)
-                        .testTag("btn_profile_logout")
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Logout,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "बाहेर पडा (Log Out)",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
-        }
-    }
+    ProfileScreenContent(
+        profile = profile,
+        onEditProfile = onEditProfile,
+        onLogout = onLogout
+    )
 }
 
 @Composable

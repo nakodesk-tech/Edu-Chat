@@ -29,6 +29,7 @@ data class UserProfile(
     @Json(name = "full_name") val fullName: String? = null,
     @Json(name = "email") val email: String? = null,
     @Json(name = "mobile") val mobile: String? = null,
+    @Json(name = "standard") val standard: String? = null,
     @Json(name = "role") val role: String = "student",
     @Json(name = "is_active") val isActive: Boolean = true,
     @Json(name = "is_primary_admin") val isPrimaryAdmin: Boolean = false,
@@ -108,6 +109,26 @@ data class SchoolAdminUpdateTeacherRequest(
     @Json(name = "teacher_id") val teacherId: String,
     @Json(name = "full_name") val fullName: String,
     @Json(name = "mobile") val mobile: String? = null,
+    @Json(name = "is_active") val isActive: Boolean = true
+)
+
+@JsonClass(generateAdapter = true)
+data class CreateStudentRequest(
+    @Json(name = "email") val email: String,
+    @Json(name = "password") val password: String,
+    @Json(name = "full_name") val fullName: String,
+    @Json(name = "mobile") val mobile: String? = null,
+    @Json(name = "standard") val standard: String? = null,
+    @Json(name = "school_id") val schoolId: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class UpdateStudentRequest(
+    @Json(name = "student_id") val studentId: String,
+    @Json(name = "full_name") val fullName: String,
+    @Json(name = "mobile") val mobile: String? = null,
+    @Json(name = "standard") val standard: String? = null,
+    @Json(name = "school_id") val schoolId: String? = null,
     @Json(name = "is_active") val isActive: Boolean = true
 )
 
