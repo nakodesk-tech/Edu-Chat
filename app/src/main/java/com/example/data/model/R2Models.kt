@@ -35,3 +35,22 @@ data class R2UploadUrlResponse(
     val effectivePublicUrl: String?
         get() = publicUrl ?: downloadUrl ?: key ?: fileKey
 }
+
+data class R2BinaryUploadResult(
+    val isSuccess: Boolean,
+    val httpCode: Int,
+    val errorMessage: String? = null,
+    val objectKey: String? = null,
+    val publicUrl: String? = null
+)
+
+data class R2ImageUploadResult(
+    val isSuccess: Boolean,
+    val publicUrl: String? = null,
+    val objectKey: String? = null,
+    val contentType: String? = null,
+    val fileSizeBytes: Long = 0L,
+    val width: Int = 0,
+    val height: Int = 0,
+    val errorMessage: String? = null
+)
