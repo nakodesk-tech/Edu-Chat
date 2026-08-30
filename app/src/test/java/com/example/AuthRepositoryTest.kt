@@ -340,4 +340,82 @@ class AuthRepositoryTest {
         assertTrue(refreshResult.isFailure)
         assertFalse(sessionManager.hasActiveSession())
     }
+
+    // A. Valid Student email + valid password -> Student login succeeds
+    @Test
+    fun test_student_login_valid_credentials_success() = runBlocking {
+        val result = authRepository.login("student@educhat.edu", "password123", UserRole.STUDENT)
+        assertTrue("Student login with valid credentials should succeed", result is AuthResult.Success)
+        val session = (result as AuthResult.Success).session
+        assertEquals("student@educhat.edu", session.profile.email)
+        assertEquals("student", session.profile.role)
+        assertEquals(UserRole.STUDENT, session.profile.userRole)
+        assertTrue(session.profile.isActive)
+        assertTrue(sessionManager.hasActiveSession())
+    }
+
+    // B. Valid Student email + wrong password -> login fails
+    @Test
+    fun test_student_login_wrong_password_fails() = runBlocking {
+        val result = authRepository.login("student@educhat.edu", "wrong_password", UserRole.STUDENT)
+        assertTrue("Student login with wrong password should fail", result is AuthResult.Error)
+        val error = result as AuthResult.Error
+        assertEquals("Invalid email or password.", error.message)
+        assertFalse(sessionManager.hasActiveSession())
+    }
+
+    // C. Student account + Officer Admin selected -> login fails with role mismatch
+    @Test
+    fun test_student_login_with_officer_admin_role_mismatch() = runBlocking {
+        val result = authRepository.login("student@educhat.edu", "password123", UserRole.OFFICER_ADMIN)
+        assertTrue("Student login as Officer Admin should fail with role mismatch", result is AuthResult.Error)
+        val error = result as AuthResult.Error
+        assertEquals("The selected role does not match your account.", error.message)
+        assertFalse(sessionManager.hasActiveSession())
+    }
+
+    // D. Student account + School Admin selected -> login fails with role mismatch
+    @Test
+    fun test_student_login_with_school_admin_role_mismatch() = runBlocking {
+        val result = authRepository.login("student@educhat.edu", "password123", UserRole.SCHOOL_ADMIN)
+        assertTrue("Student login as School Admin should fail with role mismatch", result is AuthResult.Error)
+        val error = result as AuthResult.Error
+        assertEquals("The selected role does not match your account.", error.message)
+        assertFalse(sessionManager.hasActiveSession())
+    }
+
+    // E. Student account + Teacher selected -> login fails with role mismatch
+    @Test
+    fun test_student_login_with_teacher_role_mismatch() = runBlocking {
+        val result = authRepository.login("student@educhat.edu", "password123", UserRole.TEACHER)
+        assertTrue("Student login as Teacher should fail with role mismatch", result is AuthResult.Error)
+        val error = result as AuthResult.Error
+        assertEquals("The selected role does not match your account.", error.message)
+        assertFalse(sessionManager.hasActiveSession())
+    }
+
+    // F. Inactive Student -> login fails
+    @Test
+    fun test_inactive_student_login_fails() = runBlocking {
+        val result = authRepository.login("inactive@educhat.edu", "password123", UserRole.STUDENT)
+        assertTrue("Inactive student login should fail", result is AuthResult.Error)
+        val error = result as AuthResult.Error
+        assertEquals("This account has been deactivated. Please contact your administrator.", error.message)
+        assertFalse(sessionManager.hasActiveSession())
+    }
+
+    // G. Valid Student -> session persistence and dashboard routing data intact
+    @Test
+    fun test_student_session_persistence_and_routing_data() = runBlocking {
+        val result = authRepository.login("student@educhat.edu", "password123", UserRole.STUDENT)
+        assertTrue(result is AuthResult.Success)
+
+        // Verify fresh SessionManager instance retrieves student session without data loss
+        val freshSessionManager = SessionManager(context)
+        val savedSession = freshSessionManager.getSession()
+        assertNotNull("Saved student session should not be null", savedSession)
+        assertEquals(UserRole.STUDENT, savedSession?.profile?.userRole)
+        assertEquals("student", savedSession?.profile?.role)
+        assertTrue(savedSession?.profile?.isActive == true)
+    }
 }

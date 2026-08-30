@@ -185,7 +185,7 @@ interface SupabaseAuthApi {
         @Header("apikey") apiKey: String,
         @Header("Authorization") bearerToken: String,
         @Query("id") idFilter: String,
-        @Body updates: Map<String, Any?>
+        @Body updates: @JvmSuppressWildcards Map<String, Any?>
     ): Response<List<UserProfile>>
 
     @GET("rest/v1/groups")
