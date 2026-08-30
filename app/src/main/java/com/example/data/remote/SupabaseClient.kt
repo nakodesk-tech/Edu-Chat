@@ -63,6 +63,19 @@ object SupabaseConfig {
         SupabaseClient.reset()
     }
 
+    const val R2_CREATE_UPLOAD_URL_FUNCTION_PATH = "functions/v1/r2-create-upload-url"
+    const val DEFAULT_R2_EDGE_FUNCTION_URL = "https://jycfkvcainmqcqxeaxly.supabase.co/functions/v1/r2-create-upload-url"
+
+    fun getR2UploadFunctionUrl(context: Context): String {
+        val baseUrl = getSupabaseUrl(context)
+        return if (baseUrl.isNotBlank()) {
+            val normalized = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            "${normalized}$R2_CREATE_UPLOAD_URL_FUNCTION_PATH"
+        } else {
+            DEFAULT_R2_EDGE_FUNCTION_URL
+        }
+    }
+
     fun isConfigured(context: Context): Boolean {
         val url = getSupabaseUrl(context)
         val key = getSupabaseAnonKey(context)
@@ -73,6 +86,7 @@ object SupabaseConfig {
 object SupabaseClient {
     private var currentUrl: String? = null
     private var cachedApi: SupabaseAuthApi? = null
+    private var cachedR2Api: R2UploadApi? = null
     private var appContext: Context? = null
     private val refreshLock = Any()
 
@@ -195,8 +209,31 @@ object SupabaseClient {
         return api
     }
 
+    fun getR2Api(context: Context): R2UploadApi {
+        appContext = context.applicationContext
+        val url = SupabaseConfig.getSupabaseUrl(context).let {
+            if (it.isBlank()) "https://jycfkvcainmqcqxeaxly.supabase.co/" else if (!it.endsWith("/")) "$it/" else it
+        }
+
+        if (cachedR2Api != null && currentUrl == url) {
+            return cachedR2Api!!
+        }
+
+        currentUrl = url
+        val retrofit = Retrofit.Builder()
+            .baseUrl(url)
+            .client(okHttpClient)
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .build()
+
+        val api = retrofit.create(R2UploadApi::class.java)
+        cachedR2Api = api
+        return api
+    }
+
     fun reset() {
         cachedApi = null
+        cachedR2Api = null
         currentUrl = null
     }
 
