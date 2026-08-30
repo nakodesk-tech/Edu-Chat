@@ -191,6 +191,35 @@ class StudentManagementTest {
     }
 
     @Test
+    fun testSchoolAdminUpdateStudentRequest_RpcPayloadContract() {
+        val request = com.example.data.model.SchoolAdminUpdateStudentRequest(
+            studentId = "test-uuid-123",
+            fullName = "Updated Student",
+            mobile = "9822112233",
+            standard = "10th",
+            section = "B",
+            isActive = true
+        )
+        assertEquals("test-uuid-123", request.studentId)
+        assertEquals("Updated Student", request.fullName)
+        assertEquals("9822112233", request.mobile)
+        assertEquals("10th", request.standard)
+        assertEquals("B", request.section)
+        assertTrue(request.isActive)
+
+        val moshi = com.squareup.moshi.Moshi.Builder().build()
+        val adapter = moshi.adapter(com.example.data.model.SchoolAdminUpdateStudentRequest::class.java)
+        val json = adapter.toJson(request)
+
+        assertTrue(json.contains("\"p_student_id\":\"test-uuid-123\""))
+        assertTrue(json.contains("\"p_full_name\":\"Updated Student\""))
+        assertTrue(json.contains("\"p_mobile\":\"9822112233\""))
+        assertTrue(json.contains("\"p_standard\":\"10th\""))
+        assertTrue(json.contains("\"p_section\":\"B\""))
+        assertTrue(json.contains("\"p_is_active\":true"))
+    }
+
+    @Test
     fun testStudentStandardUtils_AcademicYears() {
         val years = com.example.ui.students.StudentStandardUtils.ACADEMIC_YEARS
         assertTrue(years.contains("2026-27"))

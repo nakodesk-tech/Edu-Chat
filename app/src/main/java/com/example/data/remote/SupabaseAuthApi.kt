@@ -14,6 +14,7 @@ import com.example.data.model.OfficerAdminCreateUserRequest
 import com.example.data.model.School
 import com.example.data.model.SchoolAdminCreateStudentRequest
 import com.example.data.model.SchoolAdminCreateTeacherRequest
+import com.example.data.model.SchoolAdminUpdateStudentRequest
 import com.example.data.model.SchoolAdminUpdateTeacherRequest
 import com.example.data.model.SendGroupMessageRequest
 import com.example.data.model.SupabaseLoginRequest
@@ -157,6 +158,13 @@ interface SupabaseAuthApi {
         @Header("apikey") apiKey: String,
         @Header("Authorization") bearerToken: String,
         @Body request: SchoolAdminCreateStudentRequest
+    ): Response<UserProfile>
+
+    @POST("rest/v1/rpc/school_admin_update_student")
+    suspend fun schoolAdminUpdateStudentRpc(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") bearerToken: String,
+        @Body request: SchoolAdminUpdateStudentRequest
     ): Response<UserProfile>
 
     @POST("rest/v1/rpc/school_admin_update_teacher")

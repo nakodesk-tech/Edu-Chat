@@ -8,6 +8,7 @@ import com.example.data.model.AuthSession
 import com.example.data.model.OfficerAdminCreateUserRequest
 import com.example.data.model.School
 import com.example.data.model.SchoolAdminCreateStudentRequest
+import com.example.data.model.SchoolAdminUpdateStudentRequest
 import com.example.data.model.UserProfile
 import com.example.data.remote.SupabaseClient
 import com.example.data.remote.SupabaseConfig
@@ -257,25 +258,25 @@ class StudentRepository(private val context: Context) {
             try {
                 val api = SupabaseClient.getApi(context)
                 val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
-                val updates = mutableMapOf<String, Any?>(
-                    "full_name" to trimmedName,
-                    "mobile" to trimmedMobile,
-                    "standard" to trimmedStandard,
-                    "is_active" to isActive
-                )
-                if (!schoolId.isNullOrBlank()) {
-                    updates["school_id"] = schoolId
-                }
 
-                val response = api.patchProfile(
+                val parsedStd = com.example.ui.students.StudentStandardUtils.parseStandard(trimmedStandard) ?: trimmedStandard
+                val parsedSec = com.example.ui.students.StudentStandardUtils.parseSection(trimmedStandard)
+
+                val response = api.schoolAdminUpdateStudentRpc(
                     apiKey = anonKey,
                     bearerToken = "Bearer ${currentSession.accessToken}",
-                    idFilter = "eq.$studentId",
-                    updates = updates
+                    request = SchoolAdminUpdateStudentRequest(
+                        studentId = studentId,
+                        fullName = trimmedName,
+                        mobile = trimmedMobile,
+                        standard = parsedStd,
+                        section = parsedSec,
+                        isActive = isActive
+                    )
                 )
 
-                if (response.isSuccessful && !response.body().isNullOrEmpty()) {
-                    Result.success(response.body()!!.first())
+                if (response.isSuccessful && response.body() != null) {
+                    Result.success(response.body()!!)
                 } else {
                     val rawError = response.errorBody()?.string()
                     val msg = SupabaseClient.parseError(rawError) ?: "विद्यार्थी माहिती अद्यतनित करण्यात अयशस्वी."

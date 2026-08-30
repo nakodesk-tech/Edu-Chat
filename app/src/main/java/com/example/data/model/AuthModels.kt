@@ -116,6 +116,16 @@ data class SchoolAdminCreateStudentRequest(
 )
 
 @JsonClass(generateAdapter = true)
+data class SchoolAdminUpdateStudentRequest(
+    @Json(name = "p_student_id") val studentId: String,
+    @Json(name = "p_full_name") val fullName: String,
+    @Json(name = "p_mobile") val mobile: String? = null,
+    @Json(name = "p_standard") val standard: String? = null,
+    @Json(name = "p_section") val section: String? = null,
+    @Json(name = "p_is_active") val isActive: Boolean = true
+)
+
+@JsonClass(generateAdapter = true)
 data class SchoolAdminUpdateTeacherRequest(
     @Json(name = "teacher_id") val teacherId: String,
     @Json(name = "full_name") val fullName: String,
