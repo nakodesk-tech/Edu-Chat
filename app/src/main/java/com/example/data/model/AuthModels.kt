@@ -221,7 +221,8 @@ data class AdminUpdateUserRequest(
     @Json(name = "user_id") val userId: String,
     @Json(name = "full_name") val fullName: String,
     @Json(name = "role") val role: String,
-    @Json(name = "is_active") val isActive: Boolean
+    @Json(name = "is_active") val isActive: Boolean,
+    @Json(name = "mobile") val mobile: String? = null
 )
 
 @JsonClass(generateAdapter = true)

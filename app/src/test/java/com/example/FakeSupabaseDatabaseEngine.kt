@@ -432,6 +432,10 @@ open class FakeSupabaseDatabaseEngine : SupabaseAuthApi {
         if (updates.containsKey("standard")) {
             updated = updated.copy(standard = updates["standard"] as? String)
         }
+        if (updates.containsKey("is_active")) {
+            val act = updates["is_active"] as? Boolean ?: true
+            updated = updated.copy(isActive = act)
+        }
 
         profiles[targetId] = updated
         val email = updated.email?.trim()?.lowercase()
@@ -547,7 +551,8 @@ open class FakeSupabaseDatabaseEngine : SupabaseAuthApi {
         val updated = target.copy(
             fullName = request.fullName.trim(),
             role = request.role,
-            isActive = request.isActive
+            isActive = request.isActive,
+            mobile = request.mobile?.trim() ?: target.mobile
         )
         profiles[request.userId] = updated
         val email = updated.email?.trim()?.lowercase()
@@ -773,8 +778,8 @@ open class FakeSupabaseDatabaseEngine : SupabaseAuthApi {
         val target = profiles[request.teacherId]
             ?: return Response.error(404, "Teacher not found".toResponseBody("application/json".toMediaTypeOrNull()))
 
-        if (caller.isSchoolAdmin && target.schoolId != caller.schoolId) {
-            return Response.error(403, "Cannot modify teacher from another school".toResponseBody("application/json".toMediaTypeOrNull()))
+        if (caller.isSchoolAdmin && (target.schoolId != caller.schoolId || !target.role.equals("teacher", ignoreCase = true))) {
+            return Response.error(403, "Cannot modify user from another school or non-teacher".toResponseBody("application/json".toMediaTypeOrNull()))
         }
 
         val updated = target.copy(

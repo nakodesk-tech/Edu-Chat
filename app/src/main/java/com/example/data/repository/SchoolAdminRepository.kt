@@ -52,7 +52,7 @@ class SchoolAdminRepository(
         }
 
         if (profile.schoolId.isNullOrBlank()) {
-            return Result.failure(IllegalStateException("Access denied. No assigned school found on profile."))
+            return Result.failure(SecurityException("Access denied. No assigned school found on profile."))
         }
 
         return Result.success(session)
@@ -259,7 +259,15 @@ class SchoolAdminRepository(
             if (response.isSuccessful && response.body() != null) {
                 Result.success(response.body()!!)
             } else {
-                Result.failure(Exception("शिक्षकांची माहिती अद्यतनित करण्यात त्रुटी आली. (Failed to update teacher)"))
+                val code = response.code()
+                val rawError = response.errorBody()?.string()
+                val parsed = SupabaseClient.parseError(rawError)
+                val msg = parsed ?: "शिक्षकांची माहिती अद्यतनित करण्यात त्रुटी आली. (Failed to update teacher)"
+                if (code == 403 || msg.contains("denied", ignoreCase = true) || msg.contains("Cannot modify", ignoreCase = true) || msg.contains("Forbidden", ignoreCase = true)) {
+                    Result.failure(SecurityException(msg))
+                } else {
+                    Result.failure(Exception(msg))
+                }
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -305,7 +313,15 @@ class SchoolAdminRepository(
             if (response.isSuccessful && response.body() != null) {
                 Result.success(response.body()!!)
             } else {
-                Result.failure(Exception("स्थिती बदलण्यात त्रुटी आली. (Failed to toggle status)"))
+                val code = response.code()
+                val rawError = response.errorBody()?.string()
+                val parsed = SupabaseClient.parseError(rawError)
+                val msg = parsed ?: "स्थिती बदलण्यात त्रुटी आली. (Failed to toggle status)"
+                if (code == 403 || msg.contains("denied", ignoreCase = true) || msg.contains("Cannot modify", ignoreCase = true) || msg.contains("Forbidden", ignoreCase = true)) {
+                    Result.failure(SecurityException(msg))
+                } else {
+                    Result.failure(Exception(msg))
+                }
             }
         } catch (e: Exception) {
             Result.failure(e)

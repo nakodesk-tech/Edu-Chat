@@ -229,6 +229,17 @@ class OfficerAdminRepository(
         try {
             val api = getApi()
             val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
+
+            val schoolRes = api.getSchoolById(
+                apiKey = anonKey,
+                bearerToken = "Bearer ${currentSession.accessToken}",
+                idFilter = "eq.$schoolId"
+            )
+            val school = schoolRes.body()?.firstOrNull()
+            if (school == null || !school.isActive) {
+                return@withContext Result.failure(IllegalArgumentException("School Admin cannot be assigned to an inactive or non-existent school."))
+            }
+
             val response = api.officerAdminCreateUserRpc(
                 apiKey = anonKey,
                 bearerToken = "Bearer ${currentSession.accessToken}",
@@ -345,7 +356,8 @@ class OfficerAdminRepository(
             } else {
                 val rawError = response.errorBody()?.string()
                 val parsed = SupabaseClient.parseError(rawError)
-                Result.failure(Exception(parsed ?: "Failed to register school. School code may already exist."))
+                val msg = parsed ?: "Failed to register school. School code may already exist."
+                Result.failure(IllegalArgumentException("School code '$code' violates unique constraint: $msg"))
             }
         } catch (e: Exception) {
             Result.failure(e)

@@ -186,7 +186,8 @@ class AdminUserRepository(
                     userId = userId,
                     fullName = fullName,
                     role = role.dbValue,
-                    isActive = isActive
+                    isActive = isActive,
+                    mobile = mobileInput?.trim()
                 )
             )
 

@@ -205,7 +205,8 @@ class StudentRepository(
 
                 if (response.isSuccessful && response.body() != null) {
                     val created = response.body()!!
-                    Result.success(created)
+                    val finalProfile = if (!trimmedStandard.isNullOrBlank()) created.copy(standard = trimmedStandard) else created
+                    Result.success(finalProfile)
                 } else {
                     val rawError = response.errorBody()?.string()
                     val msg = SupabaseClient.parseError(rawError) ?: "विद्यार्थी नोंदणी अयशस्वी झाली."
@@ -267,7 +268,9 @@ class StudentRepository(
             )
 
             if (response.isSuccessful && response.body() != null) {
-                Result.success(response.body()!!)
+                val updated = response.body()!!
+                val finalProfile = if (!trimmedStandard.isNullOrBlank()) updated.copy(standard = trimmedStandard) else updated
+                Result.success(finalProfile)
             } else {
                 val rawError = response.errorBody()?.string()
                 val msg = SupabaseClient.parseError(rawError) ?: "विद्यार्थी माहिती अद्यतनित करण्यात अयशस्वी."
@@ -291,15 +294,29 @@ class StudentRepository(
         try {
             val api = getApi()
             val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
-            val response = api.patchProfile(
+
+            val profileRes = api.getProfile(
                 apiKey = anonKey,
                 bearerToken = "Bearer ${currentSession.accessToken}",
-                idFilter = "eq.$studentId",
-                updates = mapOf("is_active" to isActive)
+                idFilter = "eq.$studentId"
+            )
+            val existing = profileRes.body()?.firstOrNull()
+
+            val response = api.schoolAdminUpdateStudentRpc(
+                apiKey = anonKey,
+                bearerToken = "Bearer ${currentSession.accessToken}",
+                request = SchoolAdminUpdateStudentRequest(
+                    studentId = studentId,
+                    fullName = existing?.fullName ?: "Student",
+                    mobile = existing?.mobile,
+                    standard = existing?.standard,
+                    section = null,
+                    isActive = isActive
+                )
             )
 
-            if (response.isSuccessful && !response.body().isNullOrEmpty()) {
-                Result.success(response.body()!!.first())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
             } else {
                 val rawError = response.errorBody()?.string()
                 val msg = SupabaseClient.parseError(rawError) ?: "स्थिती बदलण्यात अयशस्वी."
@@ -323,11 +340,10 @@ class StudentRepository(
         try {
             val api = getApi()
             val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
-            val response = api.patchProfile(
+            val response = api.deleteProfile(
                 apiKey = anonKey,
                 bearerToken = "Bearer ${currentSession.accessToken}",
-                idFilter = "eq.$studentId",
-                updates = mapOf("is_active" to false)
+                idFilter = "eq.$studentId"
             )
 
             if (response.isSuccessful) {
