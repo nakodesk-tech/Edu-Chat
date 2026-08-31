@@ -71,32 +71,41 @@ class StudentManagementViewModel @JvmOverloads constructor(
 
     fun loadStudents() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            try {
+                _uiState.update { it.copy(isLoading = true, errorMessage = null) }
 
-            // Load schools first for lookups
-            val schoolsRes = studentRepository.getSchools()
-            val schoolsList = schoolsRes.getOrDefault(emptyList())
-            val schoolsMap = schoolsList.associate { it.id to it.name }
+                // Load schools first for lookups
+                val schoolsRes = studentRepository.getSchools()
+                val schoolsList = schoolsRes.getOrDefault(emptyList())
+                val schoolsMap = schoolsList.associate { it.id to it.name }
 
-            val studentsRes = studentRepository.getStudents()
-            if (studentsRes.isSuccess) {
-                val list = studentsRes.getOrDefault(emptyList())
-                _uiState.update { state ->
-                    val filtered = filterStudentsList(list, state.searchQuery, state.selectedStandardFilter, state.selectedStatusFilter)
-                    state.copy(
-                        students = list,
-                        filteredStudents = filtered,
-                        schools = schoolsList,
-                        schoolsMap = schoolsMap,
-                        isLoading = false,
-                        errorMessage = null
-                    )
+                val studentsRes = studentRepository.getStudents()
+                if (studentsRes.isSuccess) {
+                    val list = studentsRes.getOrDefault(emptyList())
+                    _uiState.update { state ->
+                        val filtered = filterStudentsList(list, state.searchQuery, state.selectedStandardFilter, state.selectedStatusFilter)
+                        state.copy(
+                            students = list,
+                            filteredStudents = filtered,
+                            schools = schoolsList,
+                            schoolsMap = schoolsMap,
+                            isLoading = false,
+                            errorMessage = null
+                        )
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = studentsRes.exceptionOrNull()?.message ?: "विद्यार्थी लोड करण्यात अयशस्वी."
+                        )
+                    }
                 }
-            } else {
+            } catch (e: Throwable) {
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        errorMessage = studentsRes.exceptionOrNull()?.message ?: "विद्यार्थी लोड करण्यात अयशस्वी."
+                        errorMessage = e.message ?: "विद्यार्थी लोड करण्यात अयशस्वी."
                     )
                 }
             }

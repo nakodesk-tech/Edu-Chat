@@ -89,8 +89,7 @@ fun RolePlaceholderScreen(
 ) {
     val profile = session.profile
     val role = profile.userRole
-    val chatViewModel: ChatGroupViewModel = viewModel()
-    val studentViewModel: StudentManagementViewModel = viewModel()
+    val sessionKey = "${profile.id}_${session.accessToken}"
     var selectedTabIndex by remember { mutableIntStateOf(0) }
 
     val roleColor = when (role) {
@@ -299,10 +298,12 @@ fun RolePlaceholderScreen(
         ) {
             when (selectedTabIndex) {
                 0 -> {
+                    val chatViewModel: ChatGroupViewModel = viewModel(key = "chat_$sessionKey")
                     ChatsTabContent(viewModel = chatViewModel)
                 }
                 1 -> {
                     if (role == UserRole.TEACHER) {
+                        val studentViewModel: StudentManagementViewModel = viewModel(key = "student_$sessionKey")
                         StudentManagementContent(viewModel = studentViewModel)
                     } else {
                         RolePlaceholderUpcomingTab(

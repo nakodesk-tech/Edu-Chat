@@ -74,25 +74,36 @@ class ChatGroupViewModel(
 
     fun loadCurrentUserAndGroups() {
         viewModelScope.launch {
-            val session = sessionManager.getSession()
-            _uiState.update {
-                it.copy(
-                    currentProfile = session?.profile,
-                    isLoading = true,
-                    errorMessage = null
-                )
-            }
+            try {
+                val session = sessionManager.getSession()
+                _uiState.update {
+                    it.copy(
+                        currentProfile = session?.profile,
+                        isLoading = true,
+                        errorMessage = null
+                    )
+                }
 
-            val groupsRes = groupRepo.getGroups()
-            val schoolsRes = groupRepo.getActiveSchools()
+                val groupsRes = groupRepo.getGroups()
+                val schoolsRes = groupRepo.getActiveSchools()
 
-            _uiState.update {
-                it.copy(
-                    isLoading = false,
-                    groups = groupsRes.getOrDefault(emptyList()),
-                    activeSchools = schoolsRes.getOrDefault(emptyList()),
-                    errorMessage = groupsRes.exceptionOrNull()?.message
-                )
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        groups = groupsRes.getOrDefault(emptyList()),
+                        activeSchools = schoolsRes.getOrDefault(emptyList()),
+                        errorMessage = groupsRes.exceptionOrNull()?.message
+                    )
+                }
+            } catch (e: Throwable) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        groups = emptyList(),
+                        activeSchools = emptyList(),
+                        errorMessage = e.message
+                    )
+                }
             }
         }
     }

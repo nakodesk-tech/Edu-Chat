@@ -133,7 +133,6 @@ fun OfficerAdminDashboardScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    val chatViewModel: ChatGroupViewModel = viewModel()
 
     LaunchedEffect(uiState.snackbarMessage) {
         uiState.snackbarMessage?.let { msg ->
@@ -277,6 +276,7 @@ fun OfficerAdminDashboardScreen(
             } else {
                 when (uiState.selectedTab) {
                     OfficerAdminTab.CHATS -> {
+                        val chatViewModel: ChatGroupViewModel = viewModel(key = "chat_officer_${uiState.profile?.id ?: "officer"}")
                         ChatsTabContent(viewModel = chatViewModel)
                     }
                     OfficerAdminTab.USERS -> {

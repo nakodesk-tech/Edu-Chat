@@ -133,8 +133,6 @@ fun SchoolAdminDashboardScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    val chatViewModel: ChatGroupViewModel = viewModel()
-    val studentViewModel: StudentManagementViewModel = viewModel()
 
     LaunchedEffect(uiState.snackbarMessage) {
         uiState.snackbarMessage?.let { msg ->
@@ -357,6 +355,7 @@ fun SchoolAdminDashboardScreen(
         ) {
             when (uiState.selectedTab) {
                 SchoolAdminTab.CHATS -> {
+                    val chatViewModel: ChatGroupViewModel = viewModel(key = "chat_schooladmin_${uiState.profile?.id ?: "school_admin"}")
                     ChatsTabContent(viewModel = chatViewModel)
                 }
                 SchoolAdminTab.TEACHERS -> {
@@ -371,6 +370,7 @@ fun SchoolAdminDashboardScreen(
                     )
                 }
                 SchoolAdminTab.STUDENTS -> {
+                    val studentViewModel: StudentManagementViewModel = viewModel(key = "student_schooladmin_${uiState.profile?.id ?: "school_admin"}")
                     StudentManagementContent(viewModel = studentViewModel)
                 }
                 SchoolAdminTab.MY_SCHOOL -> {
