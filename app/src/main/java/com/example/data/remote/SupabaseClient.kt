@@ -90,7 +90,7 @@ object SupabaseClient {
     private var appContext: Context? = null
     private val refreshLock = Any()
 
-    @androidx.annotation.VisibleForTesting
+    @androidx.annotation.VisibleForTesting(otherwise = androidx.annotation.VisibleForTesting.NONE)
     var testApiOverride: SupabaseAuthApi? = null
 
     val moshi: Moshi = Moshi.Builder()
