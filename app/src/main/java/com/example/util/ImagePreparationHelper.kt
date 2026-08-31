@@ -44,6 +44,19 @@ object ImagePreparationHelper {
             return if (resolverType == "image/jpg") "image/jpeg" else resolverType
         }
 
+        // Check file extension if path or URI is available
+        val path = uri.path ?: uri.toString()
+        val ext = path.substringAfterLast('.', "").lowercase()
+        val fromExt = when (ext) {
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            else -> null
+        }
+        if (fromExt != null) {
+            return fromExt
+        }
+
         // Fallback: Check header magic bytes
         return try {
             context.contentResolver.openInputStream(uri)?.use { stream ->
@@ -243,7 +256,7 @@ object ImagePreparationHelper {
         if (height > reqHeight || width > reqWidth) {
             val halfHeight = height / 2
             val halfWidth = width / 2
-            while ((halfHeight / inSampleSize) >= reqHeight && (halfWidth / inSampleSize) >= reqWidth) {
+            while ((halfHeight / inSampleSize) >= reqHeight || (halfWidth / inSampleSize) >= reqWidth) {
                 inSampleSize *= 2
             }
         }
