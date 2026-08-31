@@ -30,8 +30,10 @@ data class LoginFormState(
     val passwordError: String? = null
 )
 
-class AuthViewModel(application: Application) : AndroidViewModel(application) {
-    private val repository = AuthRepository(application.applicationContext)
+class AuthViewModel @JvmOverloads constructor(
+    application: Application,
+    private val repository: AuthRepository = AuthRepository(application.applicationContext)
+) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow<AuthUiState>(AuthUiState.Idle)
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()

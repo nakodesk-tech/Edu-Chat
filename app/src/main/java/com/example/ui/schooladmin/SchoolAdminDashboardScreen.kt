@@ -996,7 +996,7 @@ private fun MySchoolTabContent(
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
-                                text = "शाळेची माहिती फक्त शिक्षण अधिकारी (Officer Admin) द्वारे अद्यतनित केली जाऊ शकते.",
+                                text = "शाळेची माहिती फक्त सक्षम अधिकारी अथवा केंद्र समन्वयक (Officer Admin) द्वारे अद्ययावत करता येईल.",
                                 fontSize = 12.sp,
                                 color = PrimaryIndigo
                             )

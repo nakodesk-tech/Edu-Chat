@@ -53,9 +53,11 @@ data class SchoolAdminUiState(
         }
 }
 
-class SchoolAdminDashboardViewModel(application: Application) : AndroidViewModel(application) {
-    private val schoolAdminRepo = SchoolAdminRepository(application)
-    private val authRepo = AuthRepository(application)
+class SchoolAdminDashboardViewModel @JvmOverloads constructor(
+    application: Application,
+    private val schoolAdminRepo: SchoolAdminRepository = SchoolAdminRepository(application),
+    private val authRepo: AuthRepository = AuthRepository(application)
+) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(SchoolAdminUiState())
     val uiState: StateFlow<SchoolAdminUiState> = _uiState.asStateFlow()
