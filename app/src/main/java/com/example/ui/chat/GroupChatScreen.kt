@@ -1,14 +1,20 @@
 package com.example.ui.chat
 
+import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -26,8 +32,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.AdminPanelSettings
+import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.School
@@ -40,22 +50,33 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import coil.compose.SubcomposeAsyncImage
+import coil.request.ImageRequest
 import com.example.data.model.ChatMessage
 import com.example.data.model.Group
 import com.example.data.model.GroupMember
@@ -86,10 +107,14 @@ fun GroupChatScreen(
     isLoading: Boolean,
     isSending: Boolean,
     errorMessage: String?,
+    imageUploadState: ChatImageUploadState = ChatImageUploadState.Idle,
     onBackClick: () -> Unit,
     onInfoClick: () -> Unit,
     onMessageInputChange: (String) -> Unit,
     onSendMessage: (String) -> Unit,
+    onSendImage: (Uri) -> Unit = {},
+    onRetryImageUpload: () -> Unit = {},
+    onDismissImageUpload: () -> Unit = {},
     onRetryLoadMessages: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -100,6 +125,16 @@ fun GroupChatScreen(
     val listState = rememberLazyListState()
     val activeMessages = remember(messages) {
         messages.filter { !it.isDeleted }
+    }
+
+    var previewImageUrl by remember { mutableStateOf<String?>(null) }
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            onSendImage(uri)
+        }
     }
 
     // Auto-scroll to bottom when new messages arrive
@@ -300,7 +335,7 @@ fun GroupChatScreen(
                                 color = TextPrimary
                             )
                             Text(
-                                text = "पहिला संदेश पाठवा.",
+                                text = "पहिला संदेश किंवा चित्र पाठवा.",
                                 fontSize = 12.sp,
                                 color = TextSecondary
                             )
@@ -324,11 +359,95 @@ fun GroupChatScreen(
                         ChatMessageBubble(
                             message = message,
                             isOutgoing = isOutgoing,
-                            showSenderName = !isOutgoing && !isSameSenderAsPrev
+                            showSenderName = !isOutgoing && !isSameSenderAsPrev,
+                            onImageClick = { url -> previewImageUrl = url }
                         )
                     }
                 }
             }
+        }
+
+        // IMAGE UPLOAD PROGRESS / FAILURE BANNER
+        when (imageUploadState) {
+            is ChatImageUploadState.Uploading -> {
+                Surface(
+                    color = PrimaryIndigoContainer,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            color = PrimaryIndigo,
+                            strokeWidth = 2.5.dp,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = imageUploadState.progressMessage,
+                            fontSize = 12.5.sp,
+                            color = OnPrimaryIndigoContainer,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+            is ChatImageUploadState.Failed -> {
+                Surface(
+                    color = Color(0xFFFEE2E2),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ErrorOutline,
+                            contentDescription = null,
+                            tint = Color(0xFFDC2626),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = imageUploadState.errorMessage,
+                            fontSize = 12.sp,
+                            color = Color(0xFF991B1B),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Button(
+                            onClick = onRetryImageUpload,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.height(30.dp)
+                        ) {
+                            Text("पुन्हा प्रयत्न", fontSize = 11.sp, color = Color.White)
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        IconButton(
+                            onClick = onDismissImageUpload,
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "बंद करा",
+                                tint = Color(0xFF991B1B),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+            ChatImageUploadState.Idle -> { /* No banner */ }
         }
 
         // BOTTOM MESSAGE COMPOSER
@@ -342,9 +461,31 @@ fun GroupChatScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // ATTACH PHOTO BUTTON
+                IconButton(
+                    onClick = {
+                        photoPickerLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    },
+                    enabled = imageUploadState !is ChatImageUploadState.Uploading && !isSending,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .testTag("chat_attach_image_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AddPhotoAlternate,
+                        contentDescription = "चित्र जोडा",
+                        tint = if (imageUploadState is ChatImageUploadState.Uploading) Color(0xFF94A3B8) else PrimaryIndigo,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(4.dp))
+
                 OutlinedTextField(
                     value = messageInput,
                     onValueChange = onMessageInputChange,
@@ -368,7 +509,7 @@ fun GroupChatScreen(
                         .testTag("chat_message_input")
                 )
 
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(6.dp))
 
                 val canSend = messageInput.trim().isNotBlank() && !isSending
 
@@ -407,13 +548,88 @@ fun GroupChatScreen(
             }
         }
     }
+
+    // FULL SCREEN IMAGE PREVIEW DIALOG
+    previewImageUrl?.let { url ->
+        Dialog(
+            onDismissRequest = { previewImageUrl = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.94f))
+            ) {
+                SubcomposeAsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(url)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = "चित्र पूर्वावलोकन",
+                    contentScale = ContentScale.Fit,
+                    loading = {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(36.dp))
+                        }
+                    },
+                    error = {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.BrokenImage,
+                                    contentDescription = null,
+                                    tint = Color.White.copy(alpha = 0.7f),
+                                    modifier = Modifier.size(48.dp)
+                                )
+                                Text(
+                                    text = "चित्र लोड करण्यात अयशस्वी झाले",
+                                    color = Color.White.copy(alpha = 0.8f),
+                                    fontSize = 13.sp
+                                )
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp)
+                )
+
+                IconButton(
+                    onClick = { previewImageUrl = null },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 40.dp, end = 16.dp)
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.5f))
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "बंद करा",
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
 private fun ChatMessageBubble(
     message: ChatMessage,
     isOutgoing: Boolean,
-    showSenderName: Boolean
+    showSenderName: Boolean,
+    onImageClick: (String) -> Unit = {}
 ) {
     val senderName = message.senderProfile?.fullName ?: "सदस्य"
     val timeFormatted = remember(message.createdAt) {
@@ -430,12 +646,14 @@ private fun ChatMessageBubble(
     val textColor = if (isOutgoing) OnPrimaryIndigoContainer else TextPrimary
     val bubbleBorder = if (isOutgoing) null else BorderStroke(1.dp, BorderSubtle)
 
+    val isImage = message.isImageMessage && !message.mediaUrl.isNullOrBlank()
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isOutgoing) Arrangement.End else Arrangement.Start
     ) {
         Column(
-            modifier = Modifier.widthIn(max = 280.dp),
+            modifier = Modifier.widthIn(max = if (isImage) 260.dp else 280.dp),
             horizontalAlignment = if (isOutgoing) Alignment.End else Alignment.Start
         ) {
             Card(
@@ -445,7 +663,10 @@ private fun ChatMessageBubble(
                 elevation = CardDefaults.cardElevation(defaultElevation = if (isOutgoing) 0.5.dp else 1.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    modifier = Modifier.padding(
+                        horizontal = if (isImage) 6.dp else 12.dp,
+                        vertical = if (isImage) 6.dp else 8.dp
+                    )
                 ) {
                     if (showSenderName) {
                         Text(
@@ -454,17 +675,93 @@ private fun ChatMessageBubble(
                             fontWeight = FontWeight.Bold,
                             color = PrimaryIndigo,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = if (isImage) Modifier.padding(horizontal = 4.dp, vertical = 2.dp) else Modifier
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                     }
 
-                    Text(
-                        text = message.content,
-                        fontSize = 14.sp,
-                        color = textColor,
-                        lineHeight = 19.sp
-                    )
+                    if (isImage) {
+                        val mediaUrl = message.mediaUrl!!
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFFE2E8F0))
+                                .clickable { onImageClick(mediaUrl) }
+                        ) {
+                            SubcomposeAsyncImage(
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(mediaUrl)
+                                    .crossfade(true)
+                                    .build(),
+                                contentDescription = "गट चित्र संदेश",
+                                contentScale = ContentScale.Crop,
+                                loading = {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(180.dp)
+                                            .background(Color(0xFFE2E8F0)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator(
+                                            color = PrimaryIndigo,
+                                            strokeWidth = 2.5.dp,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                },
+                                error = {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(130.dp)
+                                            .background(Color(0xFFF1F5F9)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.BrokenImage,
+                                                contentDescription = null,
+                                                tint = TextTertiary,
+                                                modifier = Modifier.size(28.dp)
+                                            )
+                                            Text(
+                                                text = "चित्र लोड झाले नाही",
+                                                fontSize = 11.sp,
+                                                color = TextTertiary
+                                            )
+                                        }
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(180.dp)
+                            )
+                        }
+
+                        if (message.content.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = message.content,
+                                fontSize = 13.5.sp,
+                                color = textColor,
+                                lineHeight = 18.sp,
+                                modifier = Modifier.padding(horizontal = 4.dp)
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = message.content,
+                            fontSize = 14.sp,
+                            color = textColor,
+                            lineHeight = 19.sp
+                        )
+                    }
 
                     if (timeFormatted.isNotBlank()) {
                         Spacer(modifier = Modifier.height(2.dp))
@@ -472,7 +769,9 @@ private fun ChatMessageBubble(
                             text = timeFormatted,
                             fontSize = 9.5.sp,
                             color = if (isOutgoing) PrimaryIndigo.copy(alpha = 0.7f) else TextTertiary,
-                            modifier = Modifier.align(Alignment.End)
+                            modifier = Modifier
+                                .align(Alignment.End)
+                                .padding(end = if (isImage) 4.dp else 0.dp)
                         )
                     }
                 }

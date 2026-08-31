@@ -104,8 +104,9 @@ fun ChatsTabContent(
     }
 
     if (uiState.activeChatGroup != null) {
+        val activeGroup = uiState.activeChatGroup!!
         GroupChatScreen(
-            group = uiState.activeChatGroup!!,
+            group = activeGroup,
             messages = uiState.messages,
             members = uiState.selectedGroupMembers,
             currentUser = uiState.currentProfile,
@@ -113,11 +114,15 @@ fun ChatsTabContent(
             isLoading = uiState.isMessagesLoading,
             isSending = uiState.isSendingMessage,
             errorMessage = uiState.errorMessage,
+            imageUploadState = uiState.imageUploadState,
             onBackClick = { viewModel.closeChatGroup() },
             onInfoClick = { viewModel.openGroupInfo() },
             onMessageInputChange = { viewModel.setMessageInput(it) },
-            onSendMessage = { content -> viewModel.sendMessage(uiState.activeChatGroup!!.id, content) },
-            onRetryLoadMessages = { viewModel.loadMessages(uiState.activeChatGroup!!.id) },
+            onSendMessage = { content -> viewModel.sendMessage(activeGroup.id, content) },
+            onSendImage = { uri -> viewModel.sendImageMessage(activeGroup.id, uri) },
+            onRetryImageUpload = { viewModel.retryImageUpload(activeGroup.id) },
+            onDismissImageUpload = { viewModel.dismissImageUpload() },
+            onRetryLoadMessages = { viewModel.loadMessages(activeGroup.id) },
             modifier = modifier
         )
     } else {

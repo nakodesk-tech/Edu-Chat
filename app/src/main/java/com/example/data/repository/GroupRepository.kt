@@ -430,15 +430,21 @@ class GroupRepository(
 
     suspend fun sendGroupMessage(
         groupId: String,
-        content: String
+        content: String = "",
+        messageType: String = "text",
+        mediaUrl: String? = null
     ): Result<ChatMessage> = withContext(Dispatchers.IO) {
         try {
             val trimmedContent = content.trim()
+            val isImage = messageType.equals("image", ignoreCase = true) || !mediaUrl.isNullOrBlank()
             if (groupId.isBlank()) {
                 return@withContext Result.failure(IllegalArgumentException("Group ID cannot be blank"))
             }
-            if (trimmedContent.isBlank()) {
+            if (!isImage && trimmedContent.isBlank()) {
                 return@withContext Result.failure(IllegalArgumentException("संदेश रिकामा असू शकत नाही. (Message content cannot be blank)"))
+            }
+            if (isImage && mediaUrl.isNullOrBlank()) {
+                return@withContext Result.failure(IllegalArgumentException("चित्राची URL आवश्यक आहे. (Media URL cannot be blank for image message)"))
             }
             val profile = getActiveSessionProfile()
             val (api, token) = getApiAndToken()
@@ -447,7 +453,12 @@ class GroupRepository(
             val response = api.sendGroupMessageRpc(
                 apiKey = anonKey,
                 bearerToken = "Bearer $token",
-                request = SendGroupMessageRequest(groupId = groupId, content = trimmedContent)
+                request = SendGroupMessageRequest(
+                    groupId = groupId,
+                    content = trimmedContent,
+                    messageType = if (isImage) "image" else "text",
+                    mediaUrl = mediaUrl
+                )
             )
 
             if (response.isSuccessful && response.body() != null) {

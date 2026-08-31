@@ -591,6 +591,87 @@ class GroupSecurityTest {
         assertTrue(reactivated.isActive)
         assertEquals("member", reactivated.roleInGroup)
     }
+
+    // 33. Active member can send and receive image messages
+    @Test
+    fun test33_activeMemberCanSendAndReceiveImageMessage() = runBlocking {
+        setSession(officerAdmin)
+        val created = groupRepository.createGroup("Notice Board", GroupType.ADMINISTRATIVE.name).getOrNull()!!
+
+        val imageUrl = "https://pub-r2.educhat.edu/groups/${created.id}/notice_doc.jpg"
+        val sendRes = groupRepository.sendGroupMessage(
+            groupId = created.id,
+            content = "कृपया ही सूचना वाचा",
+            messageType = "image",
+            mediaUrl = imageUrl
+        )
+        assertTrue(sendRes.isSuccess)
+        val sent = sendRes.getOrNull()!!
+        assertEquals("कृपया ही सूचना वाचा", sent.content)
+        assertEquals("image", sent.messageType)
+        assertEquals(imageUrl, sent.mediaUrl)
+        assertTrue(sent.isImageMessage)
+        assertEquals(officerAdmin.id, sent.senderId)
+
+        val messagesRes = groupRepository.getGroupMessages(created.id)
+        assertTrue(messagesRes.isSuccess)
+        val messages = messagesRes.getOrNull()!!
+        assertEquals(1, messages.size)
+        assertEquals(imageUrl, messages[0].mediaUrl)
+        assertEquals("image", messages[0].messageType)
+    }
+
+    // 34. Non-member cannot send image message (Fail closed)
+    @Test
+    fun test34_nonMemberCannotSendImageMessage() = runBlocking {
+        setSession(officerAdmin)
+        val created = groupRepository.createGroup("Official Only", GroupType.ADMINISTRATIVE.name).getOrNull()!!
+
+        setSession(puneStudent1)
+        val sendRes = groupRepository.sendGroupMessage(
+            groupId = created.id,
+            content = "",
+            messageType = "image",
+            mediaUrl = "https://pub-r2.educhat.edu/groups/${created.id}/unauth.jpg"
+        )
+        assertFalse(sendRes.isSuccess)
+    }
+
+    // 35. Image message without media_url is rejected
+    @Test
+    fun test35_imageMessageWithoutMediaUrlRejected() = runBlocking {
+        setSession(officerAdmin)
+        val created = groupRepository.createGroup("Math Discussion", GroupType.ADMINISTRATIVE.name).getOrNull()!!
+
+        val sendRes = groupRepository.sendGroupMessage(
+            groupId = created.id,
+            content = "",
+            messageType = "image",
+            mediaUrl = "   "
+        )
+        assertFalse(sendRes.isSuccess)
+    }
+
+    // 36. Image message without caption succeeds with empty content
+    @Test
+    fun test36_imageMessageWithoutCaptionSucceeds() = runBlocking {
+        setSession(puneTeacher1)
+        val created = groupRepository.createGroup("Physics Lab", GroupType.TEACHER).getOrNull()!!
+
+        val imageUrl = "https://pub-r2.educhat.edu/groups/${created.id}/lab_diagram.png"
+        val sendRes = groupRepository.sendGroupMessage(
+            groupId = created.id,
+            content = "",
+            messageType = "image",
+            mediaUrl = imageUrl
+        )
+        assertTrue(sendRes.isSuccess)
+        val sent = sendRes.getOrNull()!!
+        assertEquals("", sent.content)
+        assertEquals(imageUrl, sent.mediaUrl)
+        assertEquals("image", sent.messageType)
+        assertTrue(sent.isImageMessage)
+    }
 }
 
 /**
@@ -892,14 +973,20 @@ open class FakeSupabaseDatabaseEngine : SupabaseAuthApi {
         if (!isMember) {
             return Response.error(403, "Not a member".toResponseBody("application/json".toMediaTypeOrNull()))
         }
-        if (request.content.trim().isBlank()) {
+        val isImage = request.messageType.equals("image", ignoreCase = true) || !request.mediaUrl.isNullOrBlank()
+        if (!isImage && request.content.trim().isBlank()) {
             return Response.error(400, "Blank content".toResponseBody("application/json".toMediaTypeOrNull()))
+        }
+        if (isImage && request.mediaUrl.isNullOrBlank()) {
+            return Response.error(400, "Blank media_url".toResponseBody("application/json".toMediaTypeOrNull()))
         }
         val newMsg = ChatMessage(
             id = UUID.randomUUID().toString(),
             groupId = request.groupId,
             senderId = callerId,
             content = request.content.trim(),
+            messageType = if (isImage) "image" else "text",
+            mediaUrl = request.mediaUrl,
             createdAt = "2026-08-27T09:30:00Z",
             updatedAt = "2026-08-27T09:30:00Z",
             isDeleted = false,

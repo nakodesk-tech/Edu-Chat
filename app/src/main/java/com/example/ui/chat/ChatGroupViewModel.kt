@@ -1,6 +1,7 @@
 package com.example.ui.chat
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.SessionManager
@@ -12,6 +13,7 @@ import com.example.data.model.School
 import com.example.data.model.UserProfile
 import com.example.data.model.UserRole
 import com.example.data.repository.GroupRepository
+import com.example.data.repository.R2ImageUploadManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,12 +21,19 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+sealed interface ChatImageUploadState {
+    object Idle : ChatImageUploadState
+    data class Uploading(val uri: Uri, val progressMessage: String = "चित्र अपलोड होत आहे...") : ChatImageUploadState
+    data class Failed(val uri: Uri, val errorMessage: String) : ChatImageUploadState
+}
+
 data class ChatGroupUiState(
     val isLoading: Boolean = false,
     val isActionLoading: Boolean = false,
     val isDetailLoading: Boolean = false,
     val isMessagesLoading: Boolean = false,
     val isSendingMessage: Boolean = false,
+    val imageUploadState: ChatImageUploadState = ChatImageUploadState.Idle,
     val currentProfile: UserProfile? = null,
     val groups: List<Group> = emptyList(),
     val selectedGroup: Group? = null,
@@ -48,8 +57,11 @@ data class ChatGroupUiState(
     val errorMessage: String? = null
 )
 
-class ChatGroupViewModel(application: Application) : AndroidViewModel(application) {
-    private val groupRepo = GroupRepository(application)
+class ChatGroupViewModel(
+    application: Application,
+    private val groupRepo: GroupRepository = GroupRepository(application),
+    private val r2UploadManager: R2ImageUploadManager = R2ImageUploadManager(application)
+) : AndroidViewModel(application) {
     private val sessionManager = SessionManager(application)
     private var realtimeMessagesJob: Job? = null
 
@@ -554,6 +566,83 @@ class ChatGroupViewModel(application: Application) : AndroidViewModel(applicatio
                 }
             }
         }
+    }
+
+    fun sendImageMessage(groupId: String, uri: Uri, caption: String = "") {
+        if (groupId.isBlank()) return
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    imageUploadState = ChatImageUploadState.Uploading(uri, "चित्र तयार आणि अपलोड होत आहे..."),
+                    errorMessage = null
+                )
+            }
+
+            val uploadResult = r2UploadManager.uploadImageFromUri(uri)
+            if (uploadResult.isSuccess) {
+                val r2Result = uploadResult.getOrThrow()
+                _uiState.update {
+                    it.copy(
+                        imageUploadState = ChatImageUploadState.Uploading(uri, "संदेश पाठवत आहे...")
+                    )
+                }
+
+                val sendRes = groupRepo.sendGroupMessage(
+                    groupId = groupId,
+                    content = caption.trim(),
+                    messageType = "image",
+                    mediaUrl = r2Result.publicUrl
+                )
+
+                if (sendRes.isSuccess) {
+                    val sentMessage = sendRes.getOrThrow()
+                    _uiState.update { state ->
+                        val enrichedMessage = if (sentMessage.senderProfile == null && state.currentProfile != null) {
+                            sentMessage.copy(senderProfile = state.currentProfile)
+                        } else {
+                            sentMessage
+                        }
+                        val updatedList = if (state.messages.none { it.id == enrichedMessage.id }) {
+                            (state.messages + enrichedMessage).sortedBy { it.createdAt ?: "" }
+                        } else {
+                            state.messages
+                        }
+                        state.copy(
+                            imageUploadState = ChatImageUploadState.Idle,
+                            messages = updatedList,
+                            snackbarMessage = "चित्र यशस्वीरित्या पाठवले गेले."
+                        )
+                    }
+                } else {
+                    val error = sendRes.exceptionOrNull()?.message ?: "चित्र संदेश पाठवण्यात त्रुटी आली."
+                    _uiState.update {
+                        it.copy(
+                            imageUploadState = ChatImageUploadState.Failed(uri, error),
+                            errorMessage = error
+                        )
+                    }
+                }
+            } else {
+                val error = uploadResult.exceptionOrNull()?.message ?: "चित्र अपलोड अयशस्वी झाले."
+                _uiState.update {
+                    it.copy(
+                        imageUploadState = ChatImageUploadState.Failed(uri, error),
+                        errorMessage = error
+                    )
+                }
+            }
+        }
+    }
+
+    fun retryImageUpload(groupId: String) {
+        val currentUpload = _uiState.value.imageUploadState
+        if (currentUpload is ChatImageUploadState.Failed) {
+            sendImageMessage(groupId, currentUpload.uri)
+        }
+    }
+
+    fun dismissImageUpload() {
+        _uiState.update { it.copy(imageUploadState = ChatImageUploadState.Idle) }
     }
 
     fun clearSnackbar() {

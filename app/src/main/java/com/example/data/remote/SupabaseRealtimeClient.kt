@@ -97,22 +97,27 @@ class SupabaseRealtimeClient(
                         val msgGroupId = record["group_id"]?.jsonPrimitive?.content ?: ""
                         val senderId = record["sender_id"]?.jsonPrimitive?.content ?: ""
                         val content = record["content"]?.jsonPrimitive?.content ?: ""
+                        val messageType = record["message_type"]?.jsonPrimitive?.content ?: "text"
+                        val mediaUrl = record["media_url"]?.jsonPrimitive?.content
                         val createdAt = record["created_at"]?.jsonPrimitive?.content
                         val updatedAt = record["updated_at"]?.jsonPrimitive?.content
                         val isDeleted = record["is_deleted"]?.jsonPrimitive?.booleanOrNull ?: false
 
-                        if (id.isNotBlank() && content.isNotBlank() && !isDeleted && msgGroupId == groupId) {
+                        val isImage = messageType.equals("image", ignoreCase = true) || !mediaUrl.isNullOrBlank()
+                        if (id.isNotBlank() && (content.isNotBlank() || isImage) && !isDeleted && msgGroupId == groupId) {
                             val chatMessage = ChatMessage(
                                 id = id,
                                 groupId = msgGroupId,
                                 senderId = senderId,
                                 content = content,
+                                messageType = if (isImage) "image" else messageType,
+                                mediaUrl = mediaUrl,
                                 createdAt = createdAt,
                                 updatedAt = updatedAt,
                                 isDeleted = isDeleted,
                                 senderProfile = null
                             )
-                            Log.d(TAG, "Realtime SDK received INSERT: id=$id, group=$msgGroupId")
+                            Log.d(TAG, "Realtime SDK received INSERT: id=$id, group=$msgGroupId, type=$messageType")
                             onMessageReceived(chatMessage)
                         }
                     } catch (e: Exception) {
