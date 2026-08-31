@@ -57,7 +57,7 @@ data class ChatGroupUiState(
     val errorMessage: String? = null
 )
 
-class ChatGroupViewModel(
+class ChatGroupViewModel @JvmOverloads constructor(
     application: Application,
     private val groupRepo: GroupRepository = GroupRepository(application),
     private val r2UploadManager: R2ImageUploadManager = R2ImageUploadManager(application)
