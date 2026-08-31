@@ -3,15 +3,17 @@ package com.example
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.local.SessionManager
-import com.example.data.local.SimulatedDatabase
 import com.example.data.model.AuthSession
 import com.example.data.model.UserProfile
 import com.example.data.model.UserRole
+import com.example.data.remote.SupabaseClient
 import com.example.data.remote.SupabaseConfig
+import com.example.data.repository.AdminUserRepository
 import com.example.data.repository.AuthRepository
 import com.example.data.repository.AuthResult
 import com.example.data.repository.OfficerAdminRepository
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -30,16 +32,25 @@ class OfficerAdminDashboardTest {
     private lateinit var context: Context
     private lateinit var authRepository: AuthRepository
     private lateinit var officerAdminRepository: OfficerAdminRepository
+    private lateinit var adminUserRepository: AdminUserRepository
     private lateinit var sessionManager: SessionManager
+    private lateinit var fakeApi: FakeSupabaseDatabaseEngine
 
     @Before
     fun setup() {
         context = ApplicationProvider.getApplicationContext()
-        SimulatedDatabase.reset()
+        fakeApi = FakeSupabaseDatabaseEngine()
+        SupabaseClient.testApiOverride = fakeApi
         sessionManager = SessionManager(context)
         sessionManager.clearSession()
-        authRepository = AuthRepository(context)
-        officerAdminRepository = OfficerAdminRepository(context)
+        authRepository = AuthRepository(context, sessionManager, fakeApi)
+        officerAdminRepository = OfficerAdminRepository(context, sessionManager, fakeApi)
+        adminUserRepository = AdminUserRepository(context, sessionManager, fakeApi)
+    }
+
+    @After
+    fun tearDown() {
+        SupabaseClient.reset()
     }
 
     // 1. Primary Officer Admin can access dashboard
@@ -476,8 +487,7 @@ class OfficerAdminDashboardTest {
         val loginResult = authRepository.login("admin@educhat.edu", "password123", UserRole.OFFICER_ADMIN)
         assertTrue(loginResult is AuthResult.Success)
 
-        val adminUserRepo = com.example.data.repository.AdminUserRepository(context)
-        val usersResult = adminUserRepo.getUsers()
+        val usersResult = adminUserRepository.getUsers()
         assertTrue("Admin can retrieve all registered users", usersResult.isSuccess)
         val users = usersResult.getOrNull()!!
         assertTrue("User list should not be empty", users.isNotEmpty())
@@ -492,13 +502,12 @@ class OfficerAdminDashboardTest {
     @Test
     fun officer_admin_can_update_user_details() = runBlocking {
         authRepository.login("admin@educhat.edu", "password123", UserRole.OFFICER_ADMIN)
-        val adminUserRepo = com.example.data.repository.AdminUserRepository(context)
 
         // Find teacher user to update
-        val users = adminUserRepo.getUsers().getOrNull()!!
+        val users = adminUserRepository.getUsers().getOrNull()!!
         val teacherUser = users.first { it.role.equals("teacher", ignoreCase = true) }
 
-        val updateResult = adminUserRepo.updateUser(
+        val updateResult = adminUserRepository.updateUser(
             userId = teacherUser.id,
             fullNameInput = "Updated Teacher Name",
             role = UserRole.TEACHER,
@@ -515,19 +524,18 @@ class OfficerAdminDashboardTest {
     @Test
     fun officer_admin_can_toggle_user_status() = runBlocking {
         authRepository.login("admin@educhat.edu", "password123", UserRole.OFFICER_ADMIN)
-        val adminUserRepo = com.example.data.repository.AdminUserRepository(context)
 
-        val users = adminUserRepo.getUsers().getOrNull()!!
+        val users = adminUserRepository.getUsers().getOrNull()!!
         val studentUser = users.first { it.role.equals("student", ignoreCase = true) }
 
         // Deactivate
-        val deactResult = adminUserRepo.deactivateUser(studentUser.id)
+        val deactResult = adminUserRepository.deactivateUser(studentUser.id)
         assertTrue("Deactivation succeeds", deactResult.isSuccess)
         val deactivated = deactResult.getOrNull()!!
         assertFalse(deactivated.isActive)
 
         // Reactivate
-        val reactResult = adminUserRepo.reactivateUser(studentUser.id)
+        val reactResult = adminUserRepository.reactivateUser(studentUser.id)
         assertTrue("Reactivation succeeds", reactResult.isSuccess)
         val reactivated = reactResult.getOrNull()!!
         assertTrue(reactivated.isActive)
@@ -538,19 +546,18 @@ class OfficerAdminDashboardTest {
     fun officer_admin_user_deletion_safety() = runBlocking {
         val loginResult = authRepository.login("admin@educhat.edu", "password123", UserRole.OFFICER_ADMIN)
         val session = (loginResult as AuthResult.Success).session
-        val adminUserRepo = com.example.data.repository.AdminUserRepository(context)
 
         // Attempting to delete own account must fail
-        val selfDeleteResult = adminUserRepo.deleteUser(session.profile.id)
+        val selfDeleteResult = adminUserRepository.deleteUser(session.profile.id)
         assertTrue("Self deletion must be rejected", selfDeleteResult.isFailure)
 
         // Deleting a non-admin user succeeds
-        val users = adminUserRepo.getUsers().getOrNull()!!
+        val users = adminUserRepository.getUsers().getOrNull()!!
         val target = users.first { it.role.equals("student", ignoreCase = true) }
-        val deleteResult = adminUserRepo.deleteUser(target.id)
+        val deleteResult = adminUserRepository.deleteUser(target.id)
         assertTrue("Deleting non-admin user succeeds", deleteResult.isSuccess)
 
-        val remainingUsers = adminUserRepo.getUsers().getOrNull()!!
+        val remainingUsers = adminUserRepository.getUsers().getOrNull()!!
         assertFalse("User should no longer exist in list", remainingUsers.any { it.id == target.id })
     }
 }

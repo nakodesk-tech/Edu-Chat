@@ -3,25 +3,29 @@ package com.example.data.repository
 import android.content.Context
 import android.util.Patterns
 import com.example.data.local.SessionManager
-import com.example.data.local.SimulatedDatabase
 import com.example.data.model.AuthSession
 import com.example.data.model.OfficerAdminCreateUserRequest
 import com.example.data.model.School
 import com.example.data.model.SchoolAdminCreateStudentRequest
 import com.example.data.model.SchoolAdminUpdateStudentRequest
 import com.example.data.model.UserProfile
+import com.example.data.remote.SupabaseAuthApi
 import com.example.data.remote.SupabaseClient
 import com.example.data.remote.SupabaseConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Authoritative Repository for Student Registration and Student Management (Phase C).
+ * Authoritative Repository for Student Registration and Student Management.
  * Supports Teachers, School Admins, and Officer Admins.
+ * All operations execute strictly against Supabase PostgreSQL/PostgREST/RPC backend.
+ * Production fallback to simulated storage has been completely removed.
  */
-class StudentRepository(private val context: Context) {
-    private val sessionManager = SessionManager(context)
-
+class StudentRepository(
+    private val context: Context,
+    private val sessionManager: SessionManager = SessionManager(context),
+    private val apiOverride: SupabaseAuthApi? = null
+) {
     /**
      * Verifies that the caller has an active session and is authorized to manage students.
      * Allowed roles: TEACHER, SCHOOL_ADMIN, OFFICER_ADMIN.
@@ -46,6 +50,10 @@ class StudentRepository(private val context: Context) {
         return Result.success(session)
     }
 
+    private fun getApi(): SupabaseAuthApi {
+        return apiOverride ?: SupabaseClient.getApi(context)
+    }
+
     /**
      * Retrieves students list scoped by school or system-wide for Officer Admin.
      */
@@ -63,29 +71,25 @@ class StudentRepository(private val context: Context) {
             else -> targetSchoolId
         }
 
-        if (SupabaseConfig.isConfigured(context)) {
-            try {
-                val api = SupabaseClient.getApi(context)
-                val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
-                val response = api.getStudents(
-                    apiKey = anonKey,
-                    bearerToken = "Bearer ${currentSession.accessToken}",
-                    roleFilter = "eq.student",
-                    schoolIdFilter = if (!effectiveSchoolId.isNullOrBlank()) "eq.$effectiveSchoolId" else null
-                )
+        try {
+            val api = getApi()
+            val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
+            val response = api.getStudents(
+                apiKey = anonKey,
+                bearerToken = "Bearer ${currentSession.accessToken}",
+                roleFilter = "eq.student",
+                schoolIdFilter = if (!effectiveSchoolId.isNullOrBlank()) "eq.$effectiveSchoolId" else null
+            )
 
-                if (response.isSuccessful && response.body() != null) {
-                    Result.success(response.body()!!)
-                } else {
-                    val rawError = response.errorBody()?.string()
-                    val msg = SupabaseClient.parseError(rawError) ?: "विद्यार्थ्यांची यादी लोड करण्यात अयशस्वी."
-                    Result.failure(Exception(msg))
-                }
-            } catch (e: Exception) {
-                Result.failure(Exception("नेटवर्क त्रुटी: ${e.localizedMessage ?: "Failed to fetch students"}"))
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val rawError = response.errorBody()?.string()
+                val msg = SupabaseClient.parseError(rawError) ?: "विद्यार्थ्यांची यादी लोड करण्यात अयशस्वी."
+                Result.failure(Exception(msg))
             }
-        } else {
-            SimulatedDatabase.getStudents(effectiveSchoolId)
+        } catch (e: Exception) {
+            Result.failure(Exception("नेटवर्क त्रुटी: ${e.localizedMessage ?: "Failed to fetch students"}"))
         }
     }
 
@@ -145,83 +149,71 @@ class StudentRepository(private val context: Context) {
             return@withContext Result.failure(IllegalArgumentException("कृपया वैध मोबाईल क्रमांक प्रविष्ट करा. (Invalid mobile number)"))
         }
 
-        if (SupabaseConfig.isConfigured(context)) {
-            try {
-                val api = SupabaseClient.getApi(context)
-                val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
+        try {
+            val api = getApi()
+            val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
 
-                if (callerProfile.isOfficerAdmin) {
-                    val response = api.officerAdminCreateUserRpc(
-                        apiKey = anonKey,
-                        bearerToken = "Bearer ${currentSession.accessToken}",
-                        request = OfficerAdminCreateUserRequest(
-                            email = trimmedEmail,
-                            password = password,
-                            fullName = trimmedName,
-                            mobile = trimmedMobile,
-                            role = "student",
-                            schoolId = effectiveSchoolId
-                        )
+            if (callerProfile.isOfficerAdmin) {
+                val response = api.officerAdminCreateUserRpc(
+                    apiKey = anonKey,
+                    bearerToken = "Bearer ${currentSession.accessToken}",
+                    request = OfficerAdminCreateUserRequest(
+                        email = trimmedEmail,
+                        password = password,
+                        fullName = trimmedName,
+                        mobile = trimmedMobile,
+                        role = "student",
+                        schoolId = effectiveSchoolId
                     )
+                )
 
-                    if (response.isSuccessful && response.body() != null) {
-                        val created = response.body()!!
-                        // Patch standard/class on profile if provided
-                        if (!trimmedStandard.isNullOrBlank()) {
-                            api.patchProfile(
-                                apiKey = anonKey,
-                                bearerToken = "Bearer ${currentSession.accessToken}",
-                                idFilter = "eq.${created.id}",
-                                updates = mapOf("standard" to trimmedStandard)
-                            )
-                        }
-                        Result.success(created.copy(standard = trimmedStandard))
-                    } else {
-                        val rawError = response.errorBody()?.string()
-                        val msg = SupabaseClient.parseError(rawError) ?: "विद्यार्थी नोंदणी अयशस्वी झाली."
-                        Result.failure(Exception(msg))
+                if (response.isSuccessful && response.body() != null) {
+                    val created = response.body()!!
+                    // Patch standard/class on profile if provided
+                    if (!trimmedStandard.isNullOrBlank()) {
+                        api.patchProfile(
+                            apiKey = anonKey,
+                            bearerToken = "Bearer ${currentSession.accessToken}",
+                            idFilter = "eq.${created.id}",
+                            updates = mapOf("standard" to trimmedStandard)
+                        )
                     }
+                    Result.success(created.copy(standard = trimmedStandard))
                 } else {
-                    // Active TEACHER or SCHOOL_ADMIN creating student within their authorized school via school_admin_create_student RPC
-                    val parsedStd = com.example.ui.students.StudentStandardUtils.parseStandard(trimmedStandard) ?: trimmedStandard
-                    val parsedSec = com.example.ui.students.StudentStandardUtils.parseSection(trimmedStandard)
-
-                    val response = api.schoolAdminCreateStudentRpc(
-                        apiKey = anonKey,
-                        bearerToken = "Bearer ${currentSession.accessToken}",
-                        request = SchoolAdminCreateStudentRequest(
-                            email = trimmedEmail,
-                            password = password,
-                            fullName = trimmedName,
-                            mobile = trimmedMobile,
-                            standard = parsedStd,
-                            section = parsedSec,
-                            academicYear = trimmedAcademicYear
-                        )
-                    )
-
-                    if (response.isSuccessful && response.body() != null) {
-                        val created = response.body()!!
-                        Result.success(created)
-                    } else {
-                        val rawError = response.errorBody()?.string()
-                        val msg = SupabaseClient.parseError(rawError) ?: "विद्यार्थी नोंदणी अयशस्वी झाली."
-                        Result.failure(Exception(msg))
-                    }
+                    val rawError = response.errorBody()?.string()
+                    val msg = SupabaseClient.parseError(rawError) ?: "विद्यार्थी नोंदणी अयशस्वी झाली."
+                    Result.failure(Exception(msg))
                 }
-            } catch (e: Exception) {
-                Result.failure(Exception("नोंदणी त्रुटी: ${e.localizedMessage ?: "Registration error"}"))
+            } else {
+                // Active TEACHER or SCHOOL_ADMIN creating student within their authorized school via school_admin_create_student RPC
+                val parsedStd = com.example.ui.students.StudentStandardUtils.parseStandard(trimmedStandard) ?: trimmedStandard
+                val parsedSec = com.example.ui.students.StudentStandardUtils.parseSection(trimmedStandard)
+
+                val response = api.schoolAdminCreateStudentRpc(
+                    apiKey = anonKey,
+                    bearerToken = "Bearer ${currentSession.accessToken}",
+                    request = SchoolAdminCreateStudentRequest(
+                        email = trimmedEmail,
+                        password = password,
+                        fullName = trimmedName,
+                        mobile = trimmedMobile,
+                        standard = parsedStd,
+                        section = parsedSec,
+                        academicYear = trimmedAcademicYear
+                    )
+                )
+
+                if (response.isSuccessful && response.body() != null) {
+                    val created = response.body()!!
+                    Result.success(created)
+                } else {
+                    val rawError = response.errorBody()?.string()
+                    val msg = SupabaseClient.parseError(rawError) ?: "विद्यार्थी नोंदणी अयशस्वी झाली."
+                    Result.failure(Exception(msg))
+                }
             }
-        } else {
-            SimulatedDatabase.createStudent(
-                fullName = trimmedName,
-                email = trimmedEmail,
-                password = password,
-                mobile = trimmedMobile,
-                standard = trimmedStandard,
-                schoolId = effectiveSchoolId,
-                academicYear = trimmedAcademicYear
-            )
+        } catch (e: Exception) {
+            Result.failure(Exception("नोंदणी त्रुटी: ${e.localizedMessage ?: "Registration error"}"))
         }
     }
 
@@ -254,46 +246,35 @@ class StudentRepository(private val context: Context) {
             return@withContext Result.failure(IllegalArgumentException("कृपया वैध मोबाईल क्रमांक प्रविष्ट करा."))
         }
 
-        if (SupabaseConfig.isConfigured(context)) {
-            try {
-                val api = SupabaseClient.getApi(context)
-                val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
+        try {
+            val api = getApi()
+            val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
 
-                val parsedStd = com.example.ui.students.StudentStandardUtils.parseStandard(trimmedStandard) ?: trimmedStandard
-                val parsedSec = com.example.ui.students.StudentStandardUtils.parseSection(trimmedStandard)
+            val parsedStd = com.example.ui.students.StudentStandardUtils.parseStandard(trimmedStandard) ?: trimmedStandard
+            val parsedSec = com.example.ui.students.StudentStandardUtils.parseSection(trimmedStandard)
 
-                val response = api.schoolAdminUpdateStudentRpc(
-                    apiKey = anonKey,
-                    bearerToken = "Bearer ${currentSession.accessToken}",
-                    request = SchoolAdminUpdateStudentRequest(
-                        studentId = studentId,
-                        fullName = trimmedName,
-                        mobile = trimmedMobile,
-                        standard = parsedStd,
-                        section = parsedSec,
-                        isActive = isActive
-                    )
+            val response = api.schoolAdminUpdateStudentRpc(
+                apiKey = anonKey,
+                bearerToken = "Bearer ${currentSession.accessToken}",
+                request = SchoolAdminUpdateStudentRequest(
+                    studentId = studentId,
+                    fullName = trimmedName,
+                    mobile = trimmedMobile,
+                    standard = parsedStd,
+                    section = parsedSec,
+                    isActive = isActive
                 )
-
-                if (response.isSuccessful && response.body() != null) {
-                    Result.success(response.body()!!)
-                } else {
-                    val rawError = response.errorBody()?.string()
-                    val msg = SupabaseClient.parseError(rawError) ?: "विद्यार्थी माहिती अद्यतनित करण्यात अयशस्वी."
-                    Result.failure(Exception(msg))
-                }
-            } catch (e: Exception) {
-                Result.failure(Exception("अद्यतन त्रुटी: ${e.localizedMessage ?: "Update error"}"))
-            }
-        } else {
-            SimulatedDatabase.updateStudent(
-                studentId = studentId,
-                fullName = trimmedName,
-                mobile = trimmedMobile,
-                standard = trimmedStandard,
-                schoolId = schoolId,
-                isActive = isActive
             )
+
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val rawError = response.errorBody()?.string()
+                val msg = SupabaseClient.parseError(rawError) ?: "विद्यार्थी माहिती अद्यतनित करण्यात अयशस्वी."
+                Result.failure(Exception(msg))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception("अद्यतन त्रुटी: ${e.localizedMessage ?: "Update error"}"))
         }
     }
 
@@ -307,29 +288,25 @@ class StudentRepository(private val context: Context) {
         }
         val currentSession = authResult.getOrNull()!!
 
-        if (SupabaseConfig.isConfigured(context)) {
-            try {
-                val api = SupabaseClient.getApi(context)
-                val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
-                val response = api.patchProfile(
-                    apiKey = anonKey,
-                    bearerToken = "Bearer ${currentSession.accessToken}",
-                    idFilter = "eq.$studentId",
-                    updates = mapOf("is_active" to isActive)
-                )
+        try {
+            val api = getApi()
+            val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
+            val response = api.patchProfile(
+                apiKey = anonKey,
+                bearerToken = "Bearer ${currentSession.accessToken}",
+                idFilter = "eq.$studentId",
+                updates = mapOf("is_active" to isActive)
+            )
 
-                if (response.isSuccessful && !response.body().isNullOrEmpty()) {
-                    Result.success(response.body()!!.first())
-                } else {
-                    val rawError = response.errorBody()?.string()
-                    val msg = SupabaseClient.parseError(rawError) ?: "स्थिती बदलण्यात अयशस्वी."
-                    Result.failure(Exception(msg))
-                }
-            } catch (e: Exception) {
-                Result.failure(Exception("त्रुटी: ${e.localizedMessage ?: "Status toggle error"}"))
+            if (response.isSuccessful && !response.body().isNullOrEmpty()) {
+                Result.success(response.body()!!.first())
+            } else {
+                val rawError = response.errorBody()?.string()
+                val msg = SupabaseClient.parseError(rawError) ?: "स्थिती बदलण्यात अयशस्वी."
+                Result.failure(Exception(msg))
             }
-        } else {
-            SimulatedDatabase.toggleStudentStatus(studentId, isActive)
+        } catch (e: Exception) {
+            Result.failure(Exception("त्रुटी: ${e.localizedMessage ?: "Status toggle error"}"))
         }
     }
 
@@ -343,30 +320,25 @@ class StudentRepository(private val context: Context) {
         }
         val currentSession = authResult.getOrNull()!!
 
-        if (SupabaseConfig.isConfigured(context)) {
-            try {
-                val api = SupabaseClient.getApi(context)
-                val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
-                // In Supabase, deactivates profile or removes record safely
-                val response = api.patchProfile(
-                    apiKey = anonKey,
-                    bearerToken = "Bearer ${currentSession.accessToken}",
-                    idFilter = "eq.$studentId",
-                    updates = mapOf("is_active" to false)
-                )
+        try {
+            val api = getApi()
+            val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
+            val response = api.patchProfile(
+                apiKey = anonKey,
+                bearerToken = "Bearer ${currentSession.accessToken}",
+                idFilter = "eq.$studentId",
+                updates = mapOf("is_active" to false)
+            )
 
-                if (response.isSuccessful) {
-                    Result.success(true)
-                } else {
-                    val rawError = response.errorBody()?.string()
-                    val msg = SupabaseClient.parseError(rawError) ?: "विद्यार्थी काढून टाकण्यात अयशस्वी."
-                    Result.failure(Exception(msg))
-                }
-            } catch (e: Exception) {
-                Result.failure(Exception("त्रुटी: ${e.localizedMessage ?: "Delete error"}"))
+            if (response.isSuccessful) {
+                Result.success(true)
+            } else {
+                val rawError = response.errorBody()?.string()
+                val msg = SupabaseClient.parseError(rawError) ?: "विद्यार्थी काढून टाकण्यात अयशस्वी."
+                Result.failure(Exception(msg))
             }
-        } else {
-            SimulatedDatabase.deleteStudent(studentId)
+        } catch (e: Exception) {
+            Result.failure(Exception("त्रुटी: ${e.localizedMessage ?: "Delete error"}"))
         }
     }
 
@@ -380,24 +352,20 @@ class StudentRepository(private val context: Context) {
         }
         val currentSession = authResult.getOrNull()!!
 
-        if (SupabaseConfig.isConfigured(context)) {
-            try {
-                val api = SupabaseClient.getApi(context)
-                val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
-                val response = api.getSchools(
-                    apiKey = anonKey,
-                    bearerToken = "Bearer ${currentSession.accessToken}"
-                )
-                if (response.isSuccessful && response.body() != null) {
-                    Result.success(response.body()!!)
-                } else {
-                    Result.success(emptyList())
-                }
-            } catch (e: Exception) {
-                Result.failure(e)
+        try {
+            val api = getApi()
+            val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
+            val response = api.getSchools(
+                apiKey = anonKey,
+                bearerToken = "Bearer ${currentSession.accessToken}"
+            )
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                Result.success(emptyList())
             }
-        } else {
-            Result.success(SimulatedDatabase.getAllSchools())
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 }

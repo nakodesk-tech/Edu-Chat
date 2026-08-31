@@ -3,13 +3,14 @@ package com.example
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.local.SessionManager
-import com.example.data.local.SimulatedDatabase
 import com.example.data.model.UserRole
+import com.example.data.remote.SupabaseClient
 import com.example.data.repository.AuthRepository
 import com.example.data.repository.AuthResult
 import com.example.data.repository.OfficerAdminRepository
 import com.example.data.repository.SchoolRepository
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -28,16 +29,23 @@ class SchoolSecurityRlsTest {
     private lateinit var officerAdminRepository: OfficerAdminRepository
     private lateinit var schoolRepository: SchoolRepository
     private lateinit var sessionManager: SessionManager
+    private lateinit var fakeApi: FakeSupabaseDatabaseEngine
 
     @Before
     fun setup() {
         context = ApplicationProvider.getApplicationContext()
-        SimulatedDatabase.reset()
+        fakeApi = FakeSupabaseDatabaseEngine()
+        SupabaseClient.testApiOverride = fakeApi
         sessionManager = SessionManager(context)
         sessionManager.clearSession()
-        authRepository = AuthRepository(context)
-        officerAdminRepository = OfficerAdminRepository(context)
-        schoolRepository = SchoolRepository(context)
+        authRepository = AuthRepository(context, sessionManager, fakeApi)
+        officerAdminRepository = OfficerAdminRepository(context, sessionManager, fakeApi)
+        schoolRepository = SchoolRepository(context, sessionManager, fakeApi)
+    }
+
+    @After
+    fun tearDown() {
+        SupabaseClient.reset()
     }
 
     // 1. Officer Admin can view all schools
@@ -163,7 +171,7 @@ class SchoolSecurityRlsTest {
         val puneSchoolId = "s0000000-0001-4000-8000-000000000001"
         
         // Users exist in Pune School (teacher@educhat.edu and student@educhat.edu)
-        val deleteAttempt = SimulatedDatabase.deleteSchool(puneSchoolId)
+        val deleteAttempt = fakeApi.deleteSchoolWithRestrictCheck(puneSchoolId)
         assertTrue("Deleting school with existing users must fail", deleteAttempt.isFailure)
         assertTrue(
             "Exception must enforce foreign key constraint",
@@ -174,7 +182,7 @@ class SchoolSecurityRlsTest {
         )
 
         // School must still exist
-        val school = SimulatedDatabase.findSchoolById(puneSchoolId)
+        val school = fakeApi.findSchoolById(puneSchoolId)
         assertTrue("School must not be deleted or orphaned", school != null)
     }
 }

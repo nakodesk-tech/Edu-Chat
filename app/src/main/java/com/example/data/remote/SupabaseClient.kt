@@ -90,6 +90,9 @@ object SupabaseClient {
     private var appContext: Context? = null
     private val refreshLock = Any()
 
+    @androidx.annotation.VisibleForTesting
+    var testApiOverride: SupabaseAuthApi? = null
+
     val moshi: Moshi = Moshi.Builder()
         .add(KotlinJsonAdapterFactory())
         .build()
@@ -188,6 +191,7 @@ object SupabaseClient {
     }
 
     fun getApi(context: Context): SupabaseAuthApi {
+        testApiOverride?.let { return it }
         appContext = context.applicationContext
         val url = SupabaseConfig.getSupabaseUrl(context).let {
             if (it.isBlank()) "https://placeholder.supabase.co" else if (!it.endsWith("/")) "$it/" else it
@@ -232,6 +236,7 @@ object SupabaseClient {
     }
 
     fun reset() {
+        testApiOverride = null
         cachedApi = null
         cachedR2Api = null
         currentUrl = null

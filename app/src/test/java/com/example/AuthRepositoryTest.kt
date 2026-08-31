@@ -21,20 +21,30 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
+import com.example.data.remote.SupabaseClient
+import org.junit.After
+
 @RunWith(RobolectricTestRunner::class)
 class AuthRepositoryTest {
 
     private lateinit var context: Context
     private lateinit var authRepository: AuthRepository
     private lateinit var sessionManager: SessionManager
+    private lateinit var fakeApi: FakeSupabaseDatabaseEngine
 
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         sessionManager = SessionManager(context)
         sessionManager.clearSession()
-        com.example.data.local.SimulatedDatabase.reset()
-        authRepository = AuthRepository(context)
+        fakeApi = FakeSupabaseDatabaseEngine()
+        SupabaseClient.testApiOverride = fakeApi
+        authRepository = AuthRepository(context, sessionManager, fakeApi)
+    }
+
+    @After
+    fun tearDown() {
+        SupabaseClient.reset()
     }
 
     // 1. Student attempts to change own role to Admin → MUST FAIL.

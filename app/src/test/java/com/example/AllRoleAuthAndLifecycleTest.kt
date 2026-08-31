@@ -4,8 +4,8 @@ import android.app.Application
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.local.SessionManager
-import com.example.data.local.SimulatedDatabase
 import com.example.data.model.UserRole
+import com.example.data.remote.SupabaseClient
 import com.example.data.repository.AuthRepository
 import com.example.data.repository.AuthResult
 import com.example.ui.auth.AuthUiState
@@ -13,6 +13,7 @@ import com.example.ui.auth.AuthViewModel
 import com.example.ui.chat.ChatGroupViewModel
 import com.example.ui.students.StudentManagementViewModel
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -33,15 +34,22 @@ class AllRoleAuthAndLifecycleTest {
     private lateinit var application: Application
     private lateinit var authRepository: AuthRepository
     private lateinit var sessionManager: SessionManager
+    private lateinit var fakeApi: FakeSupabaseDatabaseEngine
 
     @Before
     fun setUp() {
         application = ApplicationProvider.getApplicationContext()
         context = application
+        fakeApi = FakeSupabaseDatabaseEngine()
+        SupabaseClient.testApiOverride = fakeApi
         sessionManager = SessionManager(context)
         sessionManager.clearSession()
-        SimulatedDatabase.reset()
-        authRepository = AuthRepository(context)
+        authRepository = AuthRepository(context, sessionManager, fakeApi)
+    }
+
+    @After
+    fun tearDown() {
+        SupabaseClient.reset()
     }
 
     // 1. Teacher Login Verification

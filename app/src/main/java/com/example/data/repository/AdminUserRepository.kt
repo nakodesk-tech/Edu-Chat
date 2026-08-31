@@ -2,25 +2,28 @@ package com.example.data.repository
 
 import android.content.Context
 import com.example.data.local.SessionManager
-import com.example.data.local.SimulatedDatabase
-import com.example.data.local.SimulatedDbUser
 import com.example.data.model.AdminCreateUserRequest
 import com.example.data.model.AdminToggleStatusRequest
 import com.example.data.model.AdminUpdateUserRequest
 import com.example.data.model.UserProfile
 import com.example.data.model.UserRole
+import com.example.data.remote.SupabaseAuthApi
 import com.example.data.remote.SupabaseClient
 import com.example.data.remote.SupabaseConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
-import java.util.UUID
 
-class AdminUserRepository(private val context: Context) {
-    private val sessionManager = SessionManager(context)
-
+/**
+ * Authoritative Admin User Management Repository.
+ * All operations execute strictly against Supabase PostgreSQL/PostgREST/RPC backend.
+ * Production fallback to simulated storage has been completely removed.
+ */
+class AdminUserRepository(
+    private val context: Context,
+    private val sessionManager: SessionManager = SessionManager(context),
+    private val apiOverride: SupabaseAuthApi? = null
+) {
     /**
      * Checks if the currently authenticated session is an active Administrator.
      */
@@ -39,6 +42,10 @@ class AdminUserRepository(private val context: Context) {
         return Result.success(session)
     }
 
+    private fun getApi(): SupabaseAuthApi {
+        return apiOverride ?: SupabaseClient.getApi(context)
+    }
+
     /**
      * Retrieves all managed users (Teachers, Students, and Admin accounts).
      */
@@ -49,29 +56,23 @@ class AdminUserRepository(private val context: Context) {
         }
         val currentSession = sessionResult.getOrNull()!!
 
-        if (SupabaseConfig.isConfigured(context)) {
-            try {
-                val api = SupabaseClient.getApi(context)
-                val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
-                val response = api.getAllProfiles(
-                    apiKey = anonKey,
-                    bearerToken = "Bearer ${currentSession.accessToken}"
-                )
+        try {
+            val api = getApi()
+            val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
+            val response = api.getAllProfiles(
+                apiKey = anonKey,
+                bearerToken = "Bearer ${currentSession.accessToken}"
+            )
 
-                if (response.isSuccessful && response.body() != null) {
-                    Result.success(response.body()!!)
-                } else {
-                    val rawError = response.errorBody()?.string()
-                    val msg = SupabaseClient.parseError(rawError) ?: "Failed to retrieve user list."
-                    Result.failure(Exception(msg))
-                }
-            } catch (e: Exception) {
-                Result.failure(Exception("Network error while retrieving users: ${e.localizedMessage ?: "Please check connection"}"))
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val rawError = response.errorBody()?.string()
+                val msg = SupabaseClient.parseError(rawError) ?: "Failed to retrieve user list."
+                Result.failure(Exception(msg))
             }
-        } else {
-            // Local simulated database
-            val profiles = SimulatedDatabase.getAllProfiles()
-            Result.success(profiles)
+        } catch (e: Exception) {
+            Result.failure(Exception("Network error while retrieving users: ${e.localizedMessage ?: "Please check connection"}"))
         }
     }
 
@@ -111,58 +112,30 @@ class AdminUserRepository(private val context: Context) {
             return@withContext Result.failure(SecurityException("Admin creation is not permitted through this interface."))
         }
 
-        if (SupabaseConfig.isConfigured(context)) {
-            try {
-                val api = SupabaseClient.getApi(context)
-                val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
-                val response = api.adminCreateUserRpc(
-                    apiKey = anonKey,
-                    bearerToken = "Bearer ${currentSession.accessToken}",
-                    request = AdminCreateUserRequest(
-                        email = email,
-                        password = password,
-                        fullName = fullName,
-                        role = role.dbValue,
-                        isActive = isActive
-                    )
-                )
-
-                if (response.isSuccessful && response.body() != null) {
-                    Result.success(response.body()!!)
-                } else {
-                    val rawError = response.errorBody()?.string()
-                    val msg = SupabaseClient.parseError(rawError) ?: "Failed to create user account."
-                    Result.failure(Exception(msg))
-                }
-            } catch (e: Exception) {
-                Result.failure(Exception("Failed to create user: ${e.localizedMessage ?: "Network error"}"))
-            }
-        } else {
-            // Check uniqueness in local database
-            if (SimulatedDatabase.findByEmail(email) != null) {
-                return@withContext Result.failure(IllegalArgumentException("An account with this email already exists."))
-            }
-
-            val timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
-            val newProfile = UserProfile(
-                id = UUID.randomUUID().toString(),
-                fullName = fullName,
-                email = email,
-                role = role.dbValue,
-                isActive = isActive,
-                createdAt = timestamp,
-                updatedAt = timestamp
-            )
-
-            SimulatedDatabase.addUser(
-                SimulatedDbUser(
+        try {
+            val api = getApi()
+            val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
+            val response = api.adminCreateUserRpc(
+                apiKey = anonKey,
+                bearerToken = "Bearer ${currentSession.accessToken}",
+                request = AdminCreateUserRequest(
                     email = email,
                     password = password,
-                    profile = newProfile
+                    fullName = fullName,
+                    role = role.dbValue,
+                    isActive = isActive
                 )
             )
 
-            Result.success(newProfile)
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val rawError = response.errorBody()?.string()
+                val msg = SupabaseClient.parseError(rawError) ?: "Failed to create user account."
+                Result.failure(Exception(msg))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception("Failed to create user: ${e.localizedMessage ?: "Network error"}"))
         }
     }
 
@@ -188,17 +161,6 @@ class AdminUserRepository(private val context: Context) {
             return@withContext Result.failure(IllegalArgumentException("Full name cannot be blank."))
         }
 
-        // Security Guard: Primary Officer Admin protections
-        val targetUser = if (SupabaseConfig.isConfigured(context)) null else SimulatedDatabase.findById(userId)?.profile
-        if (targetUser != null && (targetUser.role.equals("officer_admin", ignoreCase = true) || targetUser.isPrimaryAdmin)) {
-            if (role != UserRole.OFFICER_ADMIN) {
-                return@withContext Result.failure(SecurityException("Cannot change the role of an Officer Admin."))
-            }
-            if (!isActive) {
-                return@withContext Result.failure(SecurityException("Primary Officer Admin cannot be deactivated."))
-            }
-        }
-
         // Security Guard: Admin cannot edit self into inactive or change own role
         if (userId == currentSession.profile.id) {
             if (!isActive) {
@@ -214,48 +176,29 @@ class AdminUserRepository(private val context: Context) {
             return@withContext Result.failure(SecurityException("Elevating users to Admin role is restricted."))
         }
 
-        if (SupabaseConfig.isConfigured(context)) {
-            try {
-                val api = SupabaseClient.getApi(context)
-                val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
-                val response = api.adminUpdateUserRpc(
-                    apiKey = anonKey,
-                    bearerToken = "Bearer ${currentSession.accessToken}",
-                    request = AdminUpdateUserRequest(
-                        userId = userId,
-                        fullName = fullName,
-                        role = role.dbValue,
-                        isActive = isActive
-                    )
-                )
-
-                if (response.isSuccessful && response.body() != null) {
-                    Result.success(response.body()!!)
-                } else {
-                    val rawError = response.errorBody()?.string()
-                    val msg = SupabaseClient.parseError(rawError) ?: "Failed to update user."
-                    Result.failure(Exception(msg))
-                }
-            } catch (e: Exception) {
-                Result.failure(Exception("Failed to update user: ${e.localizedMessage ?: "Network error"}"))
-            }
-        } else {
-            val timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
-            val updated = SimulatedDatabase.updateProfile(userId) { existing ->
-                existing.copy(
+        try {
+            val api = getApi()
+            val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
+            val response = api.adminUpdateUserRpc(
+                apiKey = anonKey,
+                bearerToken = "Bearer ${currentSession.accessToken}",
+                request = AdminUpdateUserRequest(
+                    userId = userId,
                     fullName = fullName,
-                    mobile = mobileInput?.trim()?.ifBlank { null } ?: existing.mobile,
                     role = role.dbValue,
-                    isActive = isActive,
-                    updatedAt = timestamp
+                    isActive = isActive
                 )
-            }
+            )
 
-            if (updated != null) {
-                Result.success(updated)
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
             } else {
-                Result.failure(IllegalStateException("User record not found."))
+                val rawError = response.errorBody()?.string()
+                val msg = SupabaseClient.parseError(rawError) ?: "Failed to update user."
+                Result.failure(Exception(msg))
             }
+        } catch (e: Exception) {
+            Result.failure(Exception("Failed to update user: ${e.localizedMessage ?: "Network error"}"))
         }
     }
 
@@ -274,37 +217,24 @@ class AdminUserRepository(private val context: Context) {
             return@withContext Result.failure(SecurityException("Admins cannot delete their own administrator account."))
         }
 
-        // Security Guard: Primary Officer Admin cannot be deleted
-        val targetUser = if (SupabaseConfig.isConfigured(context)) null else SimulatedDatabase.findById(userId)?.profile
-        if (targetUser != null && (targetUser.isPrimaryAdmin || targetUser.role.equals("officer_admin", ignoreCase = true))) {
-            return@withContext Result.failure(SecurityException("Officer Admin accounts cannot be deleted."))
-        }
+        try {
+            val api = getApi()
+            val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
+            val response = api.deleteProfile(
+                apiKey = anonKey,
+                bearerToken = "Bearer ${currentSession.accessToken}",
+                idFilter = "eq.$userId"
+            )
 
-        if (SupabaseConfig.isConfigured(context)) {
-            try {
-                val api = SupabaseClient.getApi(context)
-                val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
-                val response = api.adminToggleStatusRpc(
-                    apiKey = anonKey,
-                    bearerToken = "Bearer ${currentSession.accessToken}",
-                    request = AdminToggleStatusRequest(
-                        userId = userId,
-                        isActive = false
-                    )
-                )
-
-                if (response.isSuccessful) {
-                    Result.success(true)
-                } else {
-                    val rawError = response.errorBody()?.string()
-                    val msg = SupabaseClient.parseError(rawError) ?: "Failed to remove user."
-                    Result.failure(Exception(msg))
-                }
-            } catch (e: Exception) {
-                Result.failure(Exception("Failed to remove user: ${e.localizedMessage ?: "Network error"}"))
+            if (response.isSuccessful) {
+                Result.success(true)
+            } else {
+                val rawError = response.errorBody()?.string()
+                val msg = SupabaseClient.parseError(rawError) ?: "Failed to remove user."
+                Result.failure(Exception(msg))
             }
-        } else {
-            SimulatedDatabase.deleteUser(userId)
+        } catch (e: Exception) {
+            Result.failure(Exception("Failed to remove user: ${e.localizedMessage ?: "Network error"}"))
         }
     }
 
@@ -324,46 +254,27 @@ class AdminUserRepository(private val context: Context) {
             return@withContext Result.failure(SecurityException("You cannot deactivate your own administrator account."))
         }
 
-        // Security Guard: Primary Officer Admin cannot be deactivated
-        val targetUser = if (SupabaseConfig.isConfigured(context)) null else SimulatedDatabase.findById(userId)?.profile
-        if (targetUser != null && (targetUser.isPrimaryAdmin || targetUser.role.equals("officer_admin", ignoreCase = true))) {
-            return@withContext Result.failure(SecurityException("Primary Officer Admin cannot be deactivated."))
-        }
-
-        if (SupabaseConfig.isConfigured(context)) {
-            try {
-                val api = SupabaseClient.getApi(context)
-                val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
-                val response = api.adminToggleStatusRpc(
-                    apiKey = anonKey,
-                    bearerToken = "Bearer ${currentSession.accessToken}",
-                    request = AdminToggleStatusRequest(
-                        userId = userId,
-                        isActive = false
-                    )
+        try {
+            val api = getApi()
+            val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
+            val response = api.adminToggleStatusRpc(
+                apiKey = anonKey,
+                bearerToken = "Bearer ${currentSession.accessToken}",
+                request = AdminToggleStatusRequest(
+                    userId = userId,
+                    isActive = false
                 )
+            )
 
-                if (response.isSuccessful && response.body() != null) {
-                    Result.success(response.body()!!)
-                } else {
-                    val rawError = response.errorBody()?.string()
-                    val msg = SupabaseClient.parseError(rawError) ?: "Failed to deactivate user."
-                    Result.failure(Exception(msg))
-                }
-            } catch (e: Exception) {
-                Result.failure(Exception("Failed to deactivate user: ${e.localizedMessage ?: "Network error"}"))
-            }
-        } else {
-            val timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
-            val updated = SimulatedDatabase.updateProfile(userId) { existing ->
-                existing.copy(isActive = false, updatedAt = timestamp)
-            }
-
-            if (updated != null) {
-                Result.success(updated)
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
             } else {
-                Result.failure(IllegalStateException("User record not found."))
+                val rawError = response.errorBody()?.string()
+                val msg = SupabaseClient.parseError(rawError) ?: "Failed to deactivate user."
+                Result.failure(Exception(msg))
             }
+        } catch (e: Exception) {
+            Result.failure(Exception("Failed to deactivate user: ${e.localizedMessage ?: "Network error"}"))
         }
     }
 
@@ -377,40 +288,27 @@ class AdminUserRepository(private val context: Context) {
         }
         val currentSession = sessionResult.getOrNull()!!
 
-        if (SupabaseConfig.isConfigured(context)) {
-            try {
-                val api = SupabaseClient.getApi(context)
-                val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
-                val response = api.adminToggleStatusRpc(
-                    apiKey = anonKey,
-                    bearerToken = "Bearer ${currentSession.accessToken}",
-                    request = AdminToggleStatusRequest(
-                        userId = userId,
-                        isActive = true
-                    )
+        try {
+            val api = getApi()
+            val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
+            val response = api.adminToggleStatusRpc(
+                apiKey = anonKey,
+                bearerToken = "Bearer ${currentSession.accessToken}",
+                request = AdminToggleStatusRequest(
+                    userId = userId,
+                    isActive = true
                 )
+            )
 
-                if (response.isSuccessful && response.body() != null) {
-                    Result.success(response.body()!!)
-                } else {
-                    val rawError = response.errorBody()?.string()
-                    val msg = SupabaseClient.parseError(rawError) ?: "Failed to reactivate user."
-                    Result.failure(Exception(msg))
-                }
-            } catch (e: Exception) {
-                Result.failure(Exception("Failed to reactivate user: ${e.localizedMessage ?: "Network error"}"))
-            }
-        } else {
-            val timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
-            val updated = SimulatedDatabase.updateProfile(userId) { existing ->
-                existing.copy(isActive = true, updatedAt = timestamp)
-            }
-
-            if (updated != null) {
-                Result.success(updated)
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
             } else {
-                Result.failure(IllegalStateException("User record not found."))
+                val rawError = response.errorBody()?.string()
+                val msg = SupabaseClient.parseError(rawError) ?: "Failed to reactivate user."
+                Result.failure(Exception(msg))
             }
+        } catch (e: Exception) {
+            Result.failure(Exception("Failed to reactivate user: ${e.localizedMessage ?: "Network error"}"))
         }
     }
 }

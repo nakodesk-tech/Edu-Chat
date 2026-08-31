@@ -3,12 +3,13 @@ package com.example
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.local.SessionManager
-import com.example.data.local.SimulatedDatabase
 import com.example.data.model.UserRole
+import com.example.data.remote.SupabaseClient
 import com.example.data.repository.AdminUserRepository
 import com.example.data.repository.AuthRepository
 import com.example.data.repository.AuthResult
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -25,15 +26,22 @@ class AdminUserManagementTest {
     private lateinit var authRepository: AuthRepository
     private lateinit var adminRepository: AdminUserRepository
     private lateinit var sessionManager: SessionManager
+    private lateinit var fakeApi: FakeSupabaseDatabaseEngine
 
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         sessionManager = SessionManager(context)
         sessionManager.clearSession()
-        SimulatedDatabase.reset()
-        authRepository = AuthRepository(context)
-        adminRepository = AdminUserRepository(context)
+        fakeApi = FakeSupabaseDatabaseEngine()
+        SupabaseClient.testApiOverride = fakeApi
+        authRepository = AuthRepository(context, sessionManager, fakeApi)
+        adminRepository = AdminUserRepository(context, sessionManager, fakeApi)
+    }
+
+    @After
+    fun tearDown() {
+        SupabaseClient.reset()
     }
 
     // 1. Admin can open Admin Dashboard / view users

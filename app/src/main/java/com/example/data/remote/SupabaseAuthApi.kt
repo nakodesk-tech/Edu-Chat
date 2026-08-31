@@ -26,6 +26,7 @@ import com.example.data.model.UpdateSchoolRequest
 import com.example.data.model.UserProfile
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.PATCH
@@ -74,6 +75,13 @@ interface SupabaseAuthApi {
         @Query("select") select: String = "*",
         @Query("order") order: String = "created_at.desc"
     ): Response<List<UserProfile>>
+
+    @DELETE("rest/v1/profiles")
+    suspend fun deleteProfile(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") bearerToken: String,
+        @Query("id") idFilter: String
+    ): Response<Unit>
 
     @POST("rest/v1/rpc/update_profile_display_name")
     suspend fun updateDisplayNameRpc(

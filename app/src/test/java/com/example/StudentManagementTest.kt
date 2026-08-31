@@ -3,15 +3,15 @@ package com.example
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.local.SessionManager
-import com.example.data.local.SimulatedDatabase
-import com.example.data.local.SimulatedDbUser
 import com.example.data.model.AuthSession
 import com.example.data.model.UserProfile
 import com.example.data.model.UserRole
+import com.example.data.remote.SupabaseClient
 import com.example.data.repository.AuthRepository
 import com.example.data.repository.AuthResult
 import com.example.data.repository.StudentRepository
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -27,6 +27,7 @@ class StudentManagementTest {
     private lateinit var authRepository: AuthRepository
     private lateinit var studentRepository: StudentRepository
     private lateinit var sessionManager: SessionManager
+    private lateinit var fakeApi: FakeSupabaseDatabaseEngine
 
     private val puneSchoolId = "s0000000-0001-4000-8000-000000000001"
 
@@ -35,11 +36,12 @@ class StudentManagementTest {
     @Before
     fun setup() = runBlocking {
         context = ApplicationProvider.getApplicationContext()
-        SimulatedDatabase.reset()
+        fakeApi = FakeSupabaseDatabaseEngine()
+        SupabaseClient.testApiOverride = fakeApi
         sessionManager = SessionManager(context)
         sessionManager.clearSession()
-        authRepository = AuthRepository(context)
-        studentRepository = StudentRepository(context)
+        authRepository = AuthRepository(context, sessionManager, fakeApi)
+        studentRepository = StudentRepository(context, sessionManager, fakeApi)
 
         // Teacher session setup
         val teacherProfile = UserProfile(
@@ -53,16 +55,19 @@ class StudentManagementTest {
             createdAt = "2026-01-01T00:00:00Z",
             updatedAt = "2026-01-01T00:00:00Z"
         )
-        SimulatedDatabase.addUser(
-            SimulatedDbUser(email = teacherProfile.email!!, password = "password123", profile = teacherProfile)
-        )
+        fakeApi.addUser(teacherProfile.email!!, "password123", teacherProfile)
 
         teacherSession = AuthSession(
-            accessToken = "mock_teacher_jwt",
+            accessToken = teacherProfile.id,
             refreshToken = "mock_refresh",
             profile = teacherProfile
         )
         sessionManager.saveSession(teacherSession)
+    }
+
+    @After
+    fun tearDown() {
+        SupabaseClient.reset()
     }
 
     @Test
@@ -325,9 +330,7 @@ class StudentManagementTest {
             createdAt = "2026-01-01T00:00:00Z",
             updatedAt = "2026-01-01T00:00:00Z"
         )
-        SimulatedDatabase.addUser(
-            SimulatedDbUser(email = puneAdminProfile.email!!, password = "password123", profile = puneAdminProfile)
-        )
+        fakeApi.addUser(puneAdminProfile.email!!, "password123", puneAdminProfile)
 
         // School Admin logs in
         val loginResult = authRepository.login("principal.pune@educhat.edu", "password123", UserRole.SCHOOL_ADMIN)
