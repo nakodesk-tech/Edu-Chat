@@ -18,6 +18,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
@@ -98,7 +99,7 @@ class SupabaseRealtimeClient(
                         val senderId = record["sender_id"]?.jsonPrimitive?.content ?: ""
                         val content = record["content"]?.jsonPrimitive?.content ?: ""
                         val messageType = record["message_type"]?.jsonPrimitive?.content ?: "text"
-                        val mediaUrl = record["media_url"]?.jsonPrimitive?.content
+                        val mediaUrl = record["media_url"]?.jsonPrimitive?.contentOrNull
                         val createdAt = record["created_at"]?.jsonPrimitive?.content
                         val updatedAt = record["updated_at"]?.jsonPrimitive?.content
                         val isDeleted = record["is_deleted"]?.jsonPrimitive?.booleanOrNull ?: false
