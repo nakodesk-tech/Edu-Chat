@@ -1,0 +1,5 @@
+[functions.r2-create-upload-url]
+verify_jwt = false
+
+[functions.r2-get-download-url]
+verify_jwt = false
