@@ -60,9 +60,9 @@ data class ChatGroupUiState(
 class ChatGroupViewModel @JvmOverloads constructor(
     application: Application,
     private val groupRepo: GroupRepository = GroupRepository(application),
-    private val r2UploadManager: R2ImageUploadManager = R2ImageUploadManager(application)
+    private val r2UploadManager: R2ImageUploadManager = R2ImageUploadManager(application),
+    private val sessionManager: SessionManager = SessionManager(application)
 ) : AndroidViewModel(application) {
-    private val sessionManager = SessionManager(application)
     private var realtimeMessagesJob: Job? = null
 
     private val _uiState = MutableStateFlow(ChatGroupUiState())

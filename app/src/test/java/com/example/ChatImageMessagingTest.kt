@@ -283,4 +283,28 @@ class ChatImageMessagingTest {
         val uploadResult = uploadManager.uploadImageFromUri(imageUri)
         assertFalse(uploadResult.isSuccess)
     }
+
+    @Test
+    fun testChatGroupViewModelAcceptsExplicitRepositoryTestDouble() = runBlocking {
+        val r2Repo = createFakeR2Repo(isSuccess = true)
+        val uploadManager = R2ImageUploadManager(context, r2Repo)
+        val viewModel = ChatGroupViewModel(
+            application = application,
+            groupRepo = groupRepository,
+            r2UploadManager = uploadManager,
+            sessionManager = sessionManager
+        )
+        assertNotNull(viewModel)
+        assertNotNull(viewModel.uiState.value)
+        assertEquals(teacherUser.id, viewModel.uiState.value.currentProfile?.id)
+    }
+
+    @Test
+    fun testChatGroupViewModel_SingleArgConstructorInstantiation() {
+        val constructor = ChatGroupViewModel::class.java.getConstructor(Application::class.java)
+        assertNotNull("ChatGroupViewModel must have a single Application constructor", constructor)
+        val viewModel = constructor.newInstance(application)
+        assertNotNull(viewModel)
+        assertNotNull(viewModel.uiState.value)
+    }
 }
