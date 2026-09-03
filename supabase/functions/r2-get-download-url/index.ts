@@ -73,8 +73,12 @@ Deno.serve(async (req: Request) => {
     }
 
     // Validate that the requested objectKey belongs to the target group namespace
+    // or the legacy schools namespace for backward compatibility.
     const expectedGroupPrefix = `groups/${cleanGroupId}/`;
-    if (!cleanObjectKey.startsWith(expectedGroupPrefix)) {
+    const isGroupScoped = cleanObjectKey.startsWith(expectedGroupPrefix);
+    const isLegacySchoolScoped = cleanObjectKey.startsWith("schools/");
+
+    if (!isGroupScoped && !isLegacySchoolScoped) {
       return new Response(
         JSON.stringify({
           error: "Forbidden: objectKey does not belong to the requested group namespace.",

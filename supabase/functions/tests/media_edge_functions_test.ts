@@ -123,6 +123,11 @@ Deno.test("r2-get-download-url namespace and traversal validation", () => {
   assertEquals(validKey.startsWith(`groups/${targetGroupId}/`), true);
   assertEquals(validKey.includes(".."), false);
 
+  // Legacy schools namespace key allowed for backward compatibility
+  const legacySchoolKey = "schools/sch-001/attachments/photo.jpg";
+  assertEquals(legacySchoolKey.startsWith("schools/"), true);
+  assertEquals(legacySchoolKey.includes(".."), false);
+
   // Foreign group key
   const foreignKey = `groups/different-group/user-456/file.pdf`;
   assertEquals(foreignKey.startsWith(`groups/${targetGroupId}/`), false);
