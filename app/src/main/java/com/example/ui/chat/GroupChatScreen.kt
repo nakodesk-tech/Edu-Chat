@@ -1,5 +1,6 @@
 package com.example.ui.chat
 
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -37,10 +38,14 @@ import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -75,6 +80,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.net.toUri
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.example.data.model.ChatMessage
@@ -116,6 +122,7 @@ fun GroupChatScreen(
     onRetryImageUpload: () -> Unit = {},
     onDismissImageUpload: () -> Unit = {},
     onRetryLoadMessages: () -> Unit,
+    onResolveMediaUrl: suspend (groupId: String, objectKey: String) -> String? = { _, key -> key },
     modifier: Modifier = Modifier
 ) {
     BackHandler(enabled = true) {
@@ -360,6 +367,7 @@ fun GroupChatScreen(
                             message = message,
                             isOutgoing = isOutgoing,
                             showSenderName = !isOutgoing && !isSameSenderAsPrev,
+                            onResolveMediaUrl = onResolveMediaUrl,
                             onImageClick = { url -> previewImageUrl = url }
                         )
                     }
@@ -629,8 +637,10 @@ private fun ChatMessageBubble(
     message: ChatMessage,
     isOutgoing: Boolean,
     showSenderName: Boolean,
+    onResolveMediaUrl: suspend (groupId: String, objectKey: String) -> String? = { _, key -> key },
     onImageClick: (String) -> Unit = {}
 ) {
+    val context = LocalContext.current
     val senderName = message.senderProfile?.fullName ?: "सदस्य"
     val timeFormatted = remember(message.createdAt) {
         formatMessageTime(message.createdAt)
@@ -646,14 +656,36 @@ private fun ChatMessageBubble(
     val textColor = if (isOutgoing) OnPrimaryIndigoContainer else TextPrimary
     val bubbleBorder = if (isOutgoing) null else BorderStroke(1.dp, BorderSubtle)
 
-    val isImage = message.isImageMessage && !message.mediaUrl.isNullOrBlank()
+    val rawMediaUrl = message.mediaUrl?.trim()
+    val isImage = message.isImageMessage && !rawMediaUrl.isNullOrBlank()
+    val isDocument = (message.isPdfMessage || message.isExcelMessage || message.isFileMessage) && !rawMediaUrl.isNullOrBlank()
+
+    var resolvedUrl by remember(rawMediaUrl) {
+        mutableStateOf(
+            if (!rawMediaUrl.isNullOrBlank() && (rawMediaUrl.startsWith("http://", ignoreCase = true) || rawMediaUrl.startsWith("https://", ignoreCase = true))) {
+                rawMediaUrl
+            } else {
+                null
+            }
+        )
+    }
+
+    LaunchedEffect(rawMediaUrl, message.groupId) {
+        if (!rawMediaUrl.isNullOrBlank()) {
+            if (rawMediaUrl.startsWith("http://", ignoreCase = true) || rawMediaUrl.startsWith("https://", ignoreCase = true)) {
+                resolvedUrl = rawMediaUrl
+            } else {
+                resolvedUrl = onResolveMediaUrl(message.groupId, rawMediaUrl) ?: rawMediaUrl
+            }
+        }
+    }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isOutgoing) Arrangement.End else Arrangement.Start
     ) {
         Column(
-            modifier = Modifier.widthIn(max = if (isImage) 260.dp else 280.dp),
+            modifier = Modifier.widthIn(max = if (isImage || isDocument) 270.dp else 280.dp),
             horizontalAlignment = if (isOutgoing) Alignment.End else Alignment.Start
         ) {
             Card(
@@ -682,17 +714,17 @@ private fun ChatMessageBubble(
                     }
 
                     if (isImage) {
-                        val mediaUrl = message.mediaUrl!!
+                        val activeUrl = resolvedUrl ?: rawMediaUrl!!
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(Color(0xFFE2E8F0))
-                                .clickable { onImageClick(mediaUrl) }
+                                .clickable { onImageClick(activeUrl) }
                         ) {
                             SubcomposeAsyncImage(
                                 model = ImageRequest.Builder(LocalContext.current)
-                                    .data(mediaUrl)
+                                    .data(activeUrl)
                                     .crossfade(true)
                                     .build(),
                                 contentDescription = "गट चित्र संदेश",
@@ -742,6 +774,93 @@ private fun ChatMessageBubble(
                                     .fillMaxWidth()
                                     .height(180.dp)
                             )
+                        }
+
+                        if (message.content.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = message.content,
+                                fontSize = 13.5.sp,
+                                color = textColor,
+                                lineHeight = 18.sp,
+                                modifier = Modifier.padding(horizontal = 4.dp)
+                            )
+                        }
+                    } else if (isDocument) {
+                        val activeUrl = resolvedUrl ?: rawMediaUrl!!
+                        val docTitle = when {
+                            message.isPdfMessage -> "PDF दस्तऐवज"
+                            message.isExcelMessage -> "Excel स्प्रेडशीट"
+                            else -> "दस्तऐवज फाइल"
+                        }
+                        val docIcon = when {
+                            message.isPdfMessage -> Icons.Default.Description
+                            message.isExcelMessage -> Icons.Default.TableChart
+                            else -> Icons.Default.InsertDriveFile
+                        }
+                        val docColor = when {
+                            message.isPdfMessage -> Color(0xFFDC2626)
+                            message.isExcelMessage -> Color(0xFF16A34A)
+                            else -> PrimaryIndigo
+                        }
+                        val fileName = rawMediaUrl.substringAfterLast('/').substringBefore('?')
+
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, BorderSubtle),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    try {
+                                        val intent = Intent(Intent.ACTION_VIEW, activeUrl.toUri())
+                                        context.startActivity(intent)
+                                    } catch (_: Exception) {}
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(docColor.copy(alpha = 0.12f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = docIcon,
+                                        contentDescription = null,
+                                        tint = docColor,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = docTitle,
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = TextPrimary
+                                    )
+                                    Text(
+                                        text = fileName,
+                                        fontSize = 10.5.sp,
+                                        color = TextTertiary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Icon(
+                                    imageVector = Icons.Default.Download,
+                                    contentDescription = "डाउनलोड करा",
+                                    tint = PrimaryIndigo,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
 
                         if (message.content.isNotBlank()) {

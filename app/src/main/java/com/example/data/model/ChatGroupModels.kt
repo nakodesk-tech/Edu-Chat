@@ -96,8 +96,23 @@ data class ChatMessage(
     @Json(name = "is_deleted") val isDeleted: Boolean = false,
     @Json(name = "sender_profile") val senderProfile: UserProfile? = null
 ) {
+    val normalizedType: String
+        get() = messageType.trim().lowercase()
+
+    val isPdfMessage: Boolean
+        get() = normalizedType == "pdf" || (!mediaUrl.isNullOrBlank() && mediaUrl.endsWith(".pdf", ignoreCase = true))
+
+    val isExcelMessage: Boolean
+        get() = normalizedType == "excel" || (!mediaUrl.isNullOrBlank() && (mediaUrl.endsWith(".xlsx", ignoreCase = true) || mediaUrl.endsWith(".xls", ignoreCase = true) || mediaUrl.endsWith(".csv", ignoreCase = true)))
+
     val isImageMessage: Boolean
-        get() = messageType.equals("image", ignoreCase = true) || !mediaUrl.isNullOrBlank()
+        get() = !isPdfMessage && !isExcelMessage && (normalizedType == "image" || (!mediaUrl.isNullOrBlank() && (normalizedType.isBlank() || normalizedType == "text" || mediaUrl.contains(".jpg", ignoreCase = true) || mediaUrl.contains(".jpeg", ignoreCase = true) || mediaUrl.contains(".png", ignoreCase = true) || mediaUrl.contains(".webp", ignoreCase = true))))
+
+    val isFileMessage: Boolean
+        get() = !isImageMessage && !isPdfMessage && !isExcelMessage && (!mediaUrl.isNullOrBlank() || normalizedType == "file")
+
+    val isMediaMessage: Boolean
+        get() = !mediaUrl.isNullOrBlank() && normalizedType != "text"
 }
 
 @JsonClass(generateAdapter = true)

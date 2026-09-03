@@ -1123,19 +1123,28 @@ open class FakeSupabaseDatabaseEngine : SupabaseAuthApi {
         if (!isMember) {
             return Response.error(403, "Not a member".toResponseBody("application/json".toMediaTypeOrNull()))
         }
-        val isImage = request.messageType.equals("image", ignoreCase = true) || !request.mediaUrl.isNullOrBlank()
-        if (!isImage && request.content.trim().isBlank()) {
+        val rawType = request.messageType.trim().lowercase()
+        val isMedia = !request.mediaUrl.isNullOrBlank() || (rawType.isNotBlank() && rawType != "text")
+
+        if (!isMedia && request.content.trim().isBlank()) {
             return Response.error(400, "Blank content".toResponseBody("application/json".toMediaTypeOrNull()))
         }
-        if (isImage && request.mediaUrl.isNullOrBlank()) {
+        if (isMedia && request.mediaUrl.isNullOrBlank()) {
             return Response.error(400, "Blank media_url".toResponseBody("application/json".toMediaTypeOrNull()))
         }
+
+        val finalType = if (isMedia) {
+            if (rawType.isNotBlank() && rawType != "text") rawType else "image"
+        } else {
+            "text"
+        }
+
         val newMsg = ChatMessage(
             id = UUID.randomUUID().toString(),
             groupId = request.groupId,
             senderId = callerId,
             content = request.content.trim(),
-            messageType = if (isImage) "image" else "text",
+            messageType = finalType,
             mediaUrl = request.mediaUrl,
             createdAt = "2026-08-27T09:30:00Z",
             updatedAt = "2026-08-27T09:30:00Z",

@@ -4,6 +4,9 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.local.SessionManager
 import com.example.data.model.AuthSession
+import com.example.data.model.ChatMessage
+import com.example.data.model.R2DownloadUrlRequest
+import com.example.data.model.R2DownloadUrlResponse
 import com.example.data.model.R2UploadUrlRequest
 import com.example.data.model.R2UploadUrlResponse
 import com.example.data.model.UserProfile
@@ -482,6 +485,117 @@ class R2UploadApiTest {
         } finally {
             tempFile.delete()
         }
+    }
+
+    // 15. R2DownloadUrlRequest and Response Moshi serialization
+    @Test
+    fun testR2DownloadUrlRequestAndResponse_Serialization() {
+        val request = R2DownloadUrlRequest(
+            objectKey = "groups/grp-123/homework.pdf",
+            groupId = "grp-123"
+        )
+        val moshi = Moshi.Builder().build()
+        val reqAdapter = moshi.adapter(R2DownloadUrlRequest::class.java)
+        val reqJson = reqAdapter.toJson(request)
+        assertTrue(reqJson.contains(""""objectKey":"groups/grp-123/homework.pdf""""))
+        assertTrue(reqJson.contains(""""groupId":"grp-123""""))
+
+        val respJson = """
+            {
+                "downloadUrl": "https://r2.cloudflarestorage.com/download/homework.pdf?sig=abc",
+                "objectKey": "groups/grp-123/homework.pdf",
+                "expiresIn": 3600
+            }
+        """.trimIndent()
+        val respAdapter = moshi.adapter(R2DownloadUrlResponse::class.java)
+        val resp = respAdapter.fromJson(respJson)
+        assertNotNull(resp)
+        assertEquals("https://r2.cloudflarestorage.com/download/homework.pdf?sig=abc", resp?.effectiveDownloadUrl)
+        assertEquals("groups/grp-123/homework.pdf", resp?.effectiveObjectKey)
+        assertEquals(3600L, resp?.expiresIn)
+    }
+
+    // 16. R2StorageRepository getDownloadUrl and resolveMediaUrl caching
+    @Test
+    fun testR2StorageRepository_ResolveMediaUrl_CachingAndDirectUrl() = runBlocking {
+        setTestSession("valid_token_abc")
+
+        var networkCallCount = 0
+        val fakeApi = object : R2UploadApi {
+            override suspend fun createUploadUrl(
+                apiKey: String,
+                bearerToken: String,
+                request: R2UploadUrlRequest
+            ): Response<R2UploadUrlResponse> = Response.error(501, "".toResponseBody(null))
+
+            override suspend fun createUploadUrlWithCustomUrl(
+                customUrl: String,
+                apiKey: String,
+                bearerToken: String,
+                request: R2UploadUrlRequest
+            ): Response<R2UploadUrlResponse> = Response.error(501, "".toResponseBody(null))
+
+            override suspend fun getDownloadUrl(
+                apiKey: String,
+                bearerToken: String,
+                request: R2DownloadUrlRequest
+            ): Response<R2DownloadUrlResponse> {
+                networkCallCount++
+                return Response.success(
+                    R2DownloadUrlResponse(
+                        downloadUrl = "https://r2.download.com/signed/${request.objectKey}?token=123",
+                        objectKey = request.objectKey,
+                        expiresIn = 3600
+                    )
+                )
+            }
+        }
+
+        val repository = R2StorageRepository(context, api = fakeApi, sessionManager = sessionManager)
+
+        // A direct public http/https URL should be returned immediately without network call
+        val directResult = repository.resolveMediaUrl("grp-123", "https://cdn.example.com/photo.jpg")
+        assertTrue(directResult.isSuccess)
+        assertEquals("https://cdn.example.com/photo.jpg", directResult.getOrNull())
+        assertEquals(0, networkCallCount)
+
+        // An object key should trigger the API call once and cache it
+        val key = "groups/grp-123/syllabus.pdf"
+        val resolvedFirst = repository.resolveMediaUrl("grp-123", key)
+        assertTrue(resolvedFirst.isSuccess)
+        assertEquals("https://r2.download.com/signed/$key?token=123", resolvedFirst.getOrNull())
+        assertEquals(1, networkCallCount)
+
+        // Second call with same key should use cache and NOT make another network call
+        val resolvedSecond = repository.resolveMediaUrl("grp-123", key)
+        assertTrue(resolvedSecond.isSuccess)
+        assertEquals("https://r2.download.com/signed/$key?token=123", resolvedSecond.getOrNull())
+        assertEquals(1, networkCallCount)
+    }
+
+    // 17. ChatMessage generic media classification
+    @Test
+    fun testChatMessage_GenericMediaClassification() {
+        val textMsg = ChatMessage(id = "1", groupId = "g1", senderId = "u1", content = "Hello", messageType = "text")
+        assertFalse(textMsg.isImageMessage)
+        assertFalse(textMsg.isPdfMessage)
+        assertFalse(textMsg.isExcelMessage)
+        assertFalse(textMsg.isMediaMessage)
+
+        val imageMsg = ChatMessage(id = "2", groupId = "g1", senderId = "u1", content = "Photo", messageType = "image", mediaUrl = "groups/g1/pic.jpg")
+        assertTrue(imageMsg.isImageMessage)
+        assertFalse(imageMsg.isPdfMessage)
+        assertTrue(imageMsg.isMediaMessage)
+
+        val pdfMsg = ChatMessage(id = "3", groupId = "g1", senderId = "u1", content = "Notes", messageType = "pdf", mediaUrl = "groups/g1/unit1.pdf")
+        assertTrue(pdfMsg.isPdfMessage)
+        assertFalse(pdfMsg.isImageMessage)
+        assertTrue(pdfMsg.isMediaMessage)
+
+        val excelMsg = ChatMessage(id = "4", groupId = "g1", senderId = "u1", content = "Marks", messageType = "excel", mediaUrl = "groups/g1/results.xlsx")
+        assertTrue(excelMsg.isExcelMessage)
+        assertFalse(excelMsg.isImageMessage)
+        assertTrue(excelMsg.isMediaMessage)
     }
 }
 

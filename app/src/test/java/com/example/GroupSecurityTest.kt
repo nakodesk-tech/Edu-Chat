@@ -672,4 +672,96 @@ class GroupSecurityTest {
         assertEquals("image", sent.messageType)
         assertTrue(sent.isImageMessage)
     }
+
+    // 37. Any active user role (e.g. student) can send PDF/Excel media in their active group without role restrictions
+    @Test
+    fun test37_activeStudentMemberCanSendPdfAndExcelMedia() = runBlocking {
+        // Teacher creates classroom group
+        setSession(puneTeacher1)
+        val created = groupRepository.createGroup("10th Class Room", GroupType.TEACHER).getOrNull()!!
+
+        // Add student to the group
+        val addMemberRes = groupRepository.addMember(created.id, puneStudent1.id)
+        assertTrue(addMemberRes.isSuccess)
+
+        // Switch to student session
+        setSession(puneStudent1)
+
+        // Send PDF message
+        val pdfKey = "groups/${created.id}/homework_solution.pdf"
+        val sendPdfRes = groupRepository.sendGroupMessage(
+            groupId = created.id,
+            content = "माझा गृहपाठ PDF",
+            messageType = "pdf",
+            mediaUrl = pdfKey
+        )
+        assertTrue("Student must be allowed to send PDF media in active group", sendPdfRes.isSuccess)
+        val pdfMsg = sendPdfRes.getOrNull()!!
+        assertEquals("pdf", pdfMsg.messageType)
+        assertEquals(pdfKey, pdfMsg.mediaUrl)
+        assertTrue(pdfMsg.isPdfMessage)
+        assertFalse(pdfMsg.isImageMessage)
+        assertTrue(pdfMsg.isMediaMessage)
+
+        // Send Excel message
+        val excelKey = "groups/${created.id}/project_data.xlsx"
+        val sendExcelRes = groupRepository.sendGroupMessage(
+            groupId = created.id,
+            content = "प्रकल्प डेटा शीट",
+            messageType = "excel",
+            mediaUrl = excelKey
+        )
+        assertTrue("Student must be allowed to send Excel media in active group", sendExcelRes.isSuccess)
+        val excelMsg = sendExcelRes.getOrNull()!!
+        assertEquals("excel", excelMsg.messageType)
+        assertEquals(excelKey, excelMsg.mediaUrl)
+        assertTrue(excelMsg.isExcelMessage)
+        assertFalse(excelMsg.isImageMessage)
+    }
+
+    // 38. Deactivated member or non-member cannot send generic media
+    @Test
+    fun test38_deactivatedOrNonMemberCannotSendGenericMedia() = runBlocking {
+        setSession(puneTeacher1)
+        val created = groupRepository.createGroup("Staff Discussion", GroupType.TEACHER).getOrNull()!!
+
+        // Deactivated user cannot send
+        setSession(deactivatedTeacher)
+        val sendDeactivated = groupRepository.sendGroupMessage(
+            groupId = created.id,
+            content = "Unauth attempt",
+            messageType = "pdf",
+            mediaUrl = "groups/${created.id}/attack.pdf"
+        )
+        assertFalse("Deactivated user cannot send media", sendDeactivated.isSuccess)
+
+        // Non-member student cannot send
+        setSession(puneStudent1)
+        val sendNonMember = groupRepository.sendGroupMessage(
+            groupId = created.id,
+            content = "Unauth attempt",
+            messageType = "pdf",
+            mediaUrl = "groups/${created.id}/doc.pdf"
+        )
+        assertFalse("Non-member cannot send media", sendNonMember.isSuccess)
+    }
+
+    // 39. Storing objectKey reference in media_url (not signed expiring URL)
+    @Test
+    fun test39_mediaUrlStoresObjectKeyReference() = runBlocking {
+        setSession(officerAdmin)
+        val created = groupRepository.createGroup("Circulars", GroupType.ADMINISTRATIVE).getOrNull()!!
+
+        val objectKey = "groups/${created.id}/circular_2026.pdf"
+        val sendRes = groupRepository.sendGroupMessage(
+            groupId = created.id,
+            content = "शासकीय परिपत्रक",
+            messageType = "pdf",
+            mediaUrl = objectKey
+        )
+        assertTrue(sendRes.isSuccess)
+        val msg = sendRes.getOrNull()!!
+        assertEquals(objectKey, msg.mediaUrl)
+        assertFalse("media_url must NOT be an expiring presigned GET URL", msg.mediaUrl!!.contains("X-Amz-Signature"))
+    }
 }

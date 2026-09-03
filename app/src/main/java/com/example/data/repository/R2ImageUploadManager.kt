@@ -24,6 +24,7 @@ class R2ImageUploadManager(
      */
     suspend fun uploadImageFromUri(
         uri: Uri,
+        groupId: String = "",
         customFileName: String? = null
     ): Result<R2ImageUploadResult> = withContext(Dispatchers.IO) {
         var tempFile: File? = null
@@ -50,10 +51,12 @@ class R2ImageUploadManager(
                 "img_${UUID.randomUUID()}.$fileExt"
             }
 
-            // 2. Request presigned upload URL from Supabase Edge Function
+            // 2. Request presigned upload URL from Supabase Edge Function with group_id
             val presignedResult = r2StorageRepository.createUploadUrl(
                 fileName = uploadFileName,
-                contentType = preparedImage.contentType
+                contentType = preparedImage.contentType,
+                groupId = groupId,
+                fileSizeBytes = preparedImage.fileSizeBytes
             )
 
             if (presignedResult.isFailure) {
@@ -64,12 +67,14 @@ class R2ImageUploadManager(
             val uploadUrl = presignedResponse.effectiveUploadUrl
                 ?: return@withContext Result.failure(IllegalStateException("Edge function returned an empty upload URL."))
 
+            val serverKey = presignedResponse.effectiveObjectKey ?: uploadFileName
+
             // 3. Upload binary file via HTTP PUT to presigned URL
             val binaryResult = r2StorageRepository.uploadBinaryFile(
                 uploadUrl = uploadUrl,
                 contentType = preparedImage.contentType,
                 file = preparedImage.file,
-                objectKey = presignedResponse.key ?: presignedResponse.fileKey ?: uploadFileName,
+                objectKey = serverKey,
                 publicUrl = presignedResponse.effectivePublicUrl
             )
 
@@ -78,11 +83,13 @@ class R2ImageUploadManager(
             }
 
             val uploadResult = binaryResult.getOrNull()!!
+            val resolvedObjectKey = uploadResult.objectKey ?: serverKey
+
             Result.success(
                 R2ImageUploadResult(
                     isSuccess = true,
                     publicUrl = uploadResult.publicUrl ?: presignedResponse.effectivePublicUrl,
-                    objectKey = uploadResult.objectKey ?: presignedResponse.key ?: uploadFileName,
+                    objectKey = resolvedObjectKey,
                     contentType = preparedImage.contentType,
                     fileSizeBytes = preparedImage.fileSizeBytes,
                     width = preparedImage.width,
@@ -99,5 +106,12 @@ class R2ImageUploadManager(
                 }
             } catch (_: Exception) {}
         }
+    }
+
+    /**
+     * Resolves an R2 object key to an active authenticated download URL.
+     */
+    suspend fun resolveMediaUrl(groupId: String, objectKey: String): String? {
+        return r2StorageRepository.resolveMediaUrl(groupId, objectKey).getOrNull()
     }
 }

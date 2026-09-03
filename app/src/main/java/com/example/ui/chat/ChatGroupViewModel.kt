@@ -589,7 +589,7 @@ class ChatGroupViewModel @JvmOverloads constructor(
                 )
             }
 
-            val uploadResult = r2UploadManager.uploadImageFromUri(uri)
+            val uploadResult = r2UploadManager.uploadImageFromUri(uri = uri, groupId = groupId)
             if (uploadResult.isSuccess) {
                 val r2Result = uploadResult.getOrThrow()
                 _uiState.update {
@@ -598,11 +598,12 @@ class ChatGroupViewModel @JvmOverloads constructor(
                     )
                 }
 
+                val mediaRef = r2Result.objectKey ?: r2Result.publicUrl
                 val sendRes = groupRepo.sendGroupMessage(
                     groupId = groupId,
                     content = caption.trim(),
                     messageType = "image",
-                    mediaUrl = r2Result.publicUrl
+                    mediaUrl = mediaRef
                 )
 
                 if (sendRes.isSuccess) {
@@ -650,6 +651,10 @@ class ChatGroupViewModel @JvmOverloads constructor(
         if (currentUpload is ChatImageUploadState.Failed) {
             sendImageMessage(groupId, currentUpload.uri)
         }
+    }
+
+    suspend fun resolveMediaUrl(groupId: String, objectKey: String): String? {
+        return r2UploadManager.resolveMediaUrl(groupId, objectKey)
     }
 
     fun dismissImageUpload() {

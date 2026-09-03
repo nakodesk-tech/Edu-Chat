@@ -93,6 +93,9 @@ object SupabaseClient {
     @androidx.annotation.VisibleForTesting(otherwise = androidx.annotation.VisibleForTesting.NONE)
     var testApiOverride: SupabaseAuthApi? = null
 
+    @androidx.annotation.VisibleForTesting(otherwise = androidx.annotation.VisibleForTesting.NONE)
+    var testR2ApiOverride: R2UploadApi? = null
+
     val moshi: Moshi = Moshi.Builder()
         .add(KotlinJsonAdapterFactory())
         .build()
@@ -214,6 +217,7 @@ object SupabaseClient {
     }
 
     fun getR2Api(context: Context): R2UploadApi {
+        testR2ApiOverride?.let { return it }
         appContext = context.applicationContext
         val url = SupabaseConfig.getSupabaseUrl(context).let {
             if (it.isBlank()) "https://jycfkvcainmqcqxeaxly.supabase.co/" else if (!it.endsWith("/")) "$it/" else it
@@ -237,6 +241,7 @@ object SupabaseClient {
 
     fun reset() {
         testApiOverride = null
+        testR2ApiOverride = null
         cachedApi = null
         cachedR2Api = null
         currentUrl = null

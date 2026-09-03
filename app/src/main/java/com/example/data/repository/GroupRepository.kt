@@ -435,17 +435,38 @@ class GroupRepository(
         mediaUrl: String? = null
     ): Result<ChatMessage> = withContext(Dispatchers.IO) {
         try {
+            val trimmedGroupId = groupId.trim()
             val trimmedContent = content.trim()
-            val isImage = messageType.equals("image", ignoreCase = true) || !mediaUrl.isNullOrBlank()
-            if (groupId.isBlank()) {
+            val trimmedMediaUrl = mediaUrl?.trim()?.takeIf { it.isNotBlank() }
+            val rawType = messageType.trim().lowercase()
+
+            val isMedia = !trimmedMediaUrl.isNullOrBlank() || (rawType.isNotBlank() && rawType != "text")
+
+            if (trimmedGroupId.isBlank()) {
                 return@withContext Result.failure(IllegalArgumentException("Group ID cannot be blank"))
             }
-            if (!isImage && trimmedContent.isBlank()) {
+            if (!isMedia && trimmedContent.isBlank()) {
                 return@withContext Result.failure(IllegalArgumentException("संदेश रिकामा असू शकत नाही. (Message content cannot be blank)"))
             }
-            if (isImage && mediaUrl.isNullOrBlank()) {
+            if (isMedia && trimmedMediaUrl.isNullOrBlank()) {
                 return@withContext Result.failure(IllegalArgumentException("चित्राची URL आवश्यक आहे. (Media URL cannot be blank for image message)"))
             }
+
+            val effectiveMessageType = if (!isMedia) {
+                "text"
+            } else if (rawType.isNotBlank() && rawType != "text") {
+                rawType
+            } else {
+                // Infer from media reference if rawType was unspecified
+                val urlLower = trimmedMediaUrl?.lowercase().orEmpty()
+                when {
+                    urlLower.endsWith(".pdf") -> "pdf"
+                    urlLower.endsWith(".xlsx") || urlLower.endsWith(".xls") || urlLower.endsWith(".csv") -> "excel"
+                    urlLower.contains(".jpg") || urlLower.contains(".jpeg") || urlLower.contains(".png") || urlLower.contains(".webp") -> "image"
+                    else -> "file"
+                }
+            }
+
             val profile = getActiveSessionProfile()
             val (api, token) = getApiAndToken()
             val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
@@ -454,10 +475,10 @@ class GroupRepository(
                 apiKey = anonKey,
                 bearerToken = "Bearer $token",
                 request = SendGroupMessageRequest(
-                    groupId = groupId,
+                    groupId = trimmedGroupId,
                     content = trimmedContent,
-                    messageType = if (isImage) "image" else "text",
-                    mediaUrl = mediaUrl
+                    messageType = effectiveMessageType,
+                    mediaUrl = trimmedMediaUrl
                 )
             )
 

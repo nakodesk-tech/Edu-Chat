@@ -123,6 +123,7 @@ fun ChatsTabContent(
             onRetryImageUpload = { viewModel.retryImageUpload(activeGroup.id) },
             onDismissImageUpload = { viewModel.dismissImageUpload() },
             onRetryLoadMessages = { viewModel.loadMessages(activeGroup.id) },
+            onResolveMediaUrl = { groupId, objectKey -> viewModel.resolveMediaUrl(groupId, objectKey) },
             modifier = modifier
         )
     } else {

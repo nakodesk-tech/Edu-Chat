@@ -1,5 +1,7 @@
 package com.example.data.remote
 
+import com.example.data.model.R2DownloadUrlRequest
+import com.example.data.model.R2DownloadUrlResponse
 import com.example.data.model.R2UploadUrlRequest
 import com.example.data.model.R2UploadUrlResponse
 import retrofit2.Response
@@ -26,4 +28,15 @@ interface R2UploadApi {
         @Header("Authorization") bearerToken: String,
         @Body request: R2UploadUrlRequest
     ): Response<R2UploadUrlResponse>
+
+    @POST("functions/v1/r2-get-download-url")
+    @Headers("Content-Type: application/json")
+    suspend fun getDownloadUrl(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") bearerToken: String,
+        @Body request: R2DownloadUrlRequest
+    ): Response<R2DownloadUrlResponse> = Response.error(
+        501,
+        okhttp3.ResponseBody.create(null, "Not implemented in default interface stub")
+    )
 }

@@ -3,6 +3,8 @@ package com.example.data.repository
 import android.content.Context
 import com.example.data.local.SessionManager
 import com.example.data.model.R2BinaryUploadResult
+import com.example.data.model.R2DownloadUrlRequest
+import com.example.data.model.R2DownloadUrlResponse
 import com.example.data.model.R2UploadUrlRequest
 import com.example.data.model.R2UploadUrlResponse
 import com.example.data.remote.R2UploadApi
@@ -18,6 +20,7 @@ import okio.BufferedSink
 import okio.source
 import java.io.File
 import java.io.InputStream
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 class R2StorageRepository(
@@ -26,6 +29,11 @@ class R2StorageRepository(
     private val sessionManager: SessionManager = SessionManager(context),
     private val uploadHttpClient: OkHttpClient = defaultUploadClient
 ) {
+    private data class CachedDownloadUrl(
+        val url: String,
+        val expiresAtMs: Long
+    )
+
     companion object {
         private val defaultUploadClient: OkHttpClient by lazy {
             OkHttpClient.Builder()
@@ -34,14 +42,19 @@ class R2StorageRepository(
                 .writeTimeout(60, TimeUnit.SECONDS)
                 .build()
         }
+
+        private val downloadUrlCache = ConcurrentHashMap<String, CachedDownloadUrl>()
     }
 
     suspend fun createUploadUrl(
         fileName: String,
-        contentType: String
+        contentType: String,
+        groupId: String = "",
+        fileSizeBytes: Long = -1L
     ): Result<R2UploadUrlResponse> = withContext(Dispatchers.IO) {
         val trimmedFileName = fileName.trim()
         val trimmedContentType = contentType.trim()
+        val trimmedGroupId = groupId.trim()
 
         if (trimmedFileName.isBlank()) {
             return@withContext Result.failure(IllegalArgumentException("File name cannot be blank."))
@@ -58,7 +71,9 @@ class R2StorageRepository(
         val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
         val request = R2UploadUrlRequest(
             fileName = trimmedFileName,
-            contentType = trimmedContentType
+            contentType = trimmedContentType,
+            groupId = trimmedGroupId,
+            fileSize = if (fileSizeBytes > 0) fileSizeBytes else null
         )
 
         try {
@@ -91,6 +106,106 @@ class R2StorageRepository(
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    suspend fun getDownloadUrl(
+        groupId: String,
+        objectKey: String
+    ): Result<R2DownloadUrlResponse> = withContext(Dispatchers.IO) {
+        val trimmedGroupId = groupId.trim()
+        val trimmedObjectKey = objectKey.trim()
+
+        if (trimmedGroupId.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("Group ID cannot be blank."))
+        }
+        if (trimmedObjectKey.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("Object key cannot be blank."))
+        }
+
+        val accessToken = sessionManager.getAccessToken()
+        if (accessToken.isNullOrBlank()) {
+            return@withContext Result.failure(IllegalStateException("No active authenticated session. Please login again."))
+        }
+
+        val anonKey = SupabaseConfig.getSupabaseAnonKey(context)
+        val request = R2DownloadUrlRequest(
+            groupId = trimmedGroupId,
+            objectKey = trimmedObjectKey
+        )
+
+        try {
+            val response = api.getDownloadUrl(
+                apiKey = anonKey,
+                bearerToken = "Bearer $accessToken",
+                request = request
+            )
+
+            if (response.isSuccessful && response.body() != null) {
+                val body = response.body()!!
+                if (!body.error.isNullOrBlank()) {
+                    Result.failure(Exception(body.error))
+                } else if (body.effectiveDownloadUrl.isNullOrBlank()) {
+                    Result.failure(Exception("Edge function returned empty download URL."))
+                } else {
+                    Result.success(body)
+                }
+            } else {
+                val errorBodyStr = response.errorBody()?.string()
+                val parsedError = SupabaseClient.parseError(errorBodyStr)
+                val errorMessage = when (response.code()) {
+                    401 -> "सत्र कालबाह्य झाले आहे. कृपया पुन्हा लॉगिन करा (401 Unauthorized)."
+                    403 -> "या फाइलसाठी परवानगी नाही (403 Forbidden)."
+                    404 -> "फाइल किंवा Edge Function आढळले नाही (404 Not Found)."
+                    else -> parsedError ?: "डाउनलोड URL मिळवण्यात अयशस्वी (${response.code()} ${response.message()})."
+                }
+                Result.failure(Exception(errorMessage))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Resolves an R2 object key or existing URL to an authenticated short-lived GET URL.
+     * Caches valid presigned URLs to prevent redundant network requests during Jetpack Compose recomposition.
+     */
+    suspend fun resolveMediaUrl(
+        groupId: String,
+        mediaRef: String
+    ): Result<String> = withContext(Dispatchers.IO) {
+        val trimmedRef = mediaRef.trim()
+        if (trimmedRef.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("Media reference cannot be blank."))
+        }
+        // Backward compatibility: If already a full HTTP/HTTPS URL, return directly
+        if (trimmedRef.startsWith("http://", ignoreCase = true) || trimmedRef.startsWith("https://", ignoreCase = true)) {
+            return@withContext Result.success(trimmedRef)
+        }
+
+        val trimmedGroupId = groupId.trim()
+        val cacheKey = "$trimmedGroupId:$trimmedRef"
+        val now = System.currentTimeMillis()
+        val cached = downloadUrlCache[cacheKey]
+        if (cached != null && cached.expiresAtMs > now) {
+            return@withContext Result.success(cached.url)
+        }
+
+        val result = getDownloadUrl(trimmedGroupId, trimmedRef)
+        if (result.isSuccess) {
+            val resp = result.getOrNull()!!
+            val signedUrl = resp.effectiveDownloadUrl!!
+            val expiresInSec = resp.expiresIn ?: 3600L
+            // Safe margin: refresh 5 minutes before actual expiry (minimum 60s validity)
+            val validDurationMs = maxOf(60L, expiresInSec - 300L) * 1000L
+            downloadUrlCache[cacheKey] = CachedDownloadUrl(url = signedUrl, expiresAtMs = now + validDurationMs)
+            Result.success(signedUrl)
+        } else {
+            Result.failure(result.exceptionOrNull() ?: Exception("Failed to resolve media URL"))
+        }
+    }
+
+    fun clearCache() {
+        downloadUrlCache.clear()
     }
 
     /**
