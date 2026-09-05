@@ -137,6 +137,24 @@ class ChatImageMessagingTest {
                 bearerToken: String,
                 request: R2UploadUrlRequest
             ): Response<R2UploadUrlResponse> = createUploadUrl(apiKey, bearerToken, request)
+
+            override suspend fun getDownloadUrl(
+                apiKey: String,
+                bearerToken: String,
+                request: com.example.data.model.R2DownloadUrlRequest
+            ): Response<com.example.data.model.R2DownloadUrlResponse> {
+                return if (isSuccess) {
+                    Response.success(
+                        com.example.data.model.R2DownloadUrlResponse(
+                            downloadUrl = "https://pub-r2.educhat.edu/${request.objectKey}",
+                            objectKey = request.objectKey,
+                            expiresIn = 3600
+                        )
+                    )
+                } else {
+                    Response.error(500, "Download URL error".toResponseBody(null))
+                }
+            }
         }
 
         val fakeClient = OkHttpClient.Builder()
@@ -306,5 +324,85 @@ class ChatImageMessagingTest {
         val viewModel = constructor.newInstance(application)
         assertNotNull(viewModel)
         assertNotNull(viewModel.uiState.value)
+    }
+
+    @Test
+    fun testOfficerAdminGroupChat_SendImage_R2Upload_StoreMediaRef_ResolveMediaUrl() = runBlocking {
+        val officerUser = UserProfile(
+            id = "officer-admin-uuid-1",
+            fullName = "Shri Rajesh Patil",
+            email = "rajesh.patil@education.gov.in",
+            mobile = "9823001122",
+            role = "officer_admin",
+            schoolId = null,
+            isActive = true
+        )
+        fakeDatabaseEngine.addProfile(officerUser)
+
+        sessionManager.saveSession(
+            AuthSession(
+                accessToken = officerUser.id,
+                refreshToken = "officer-refresh-token",
+                profile = officerUser
+            )
+        )
+
+        val group = groupRepository.createGroup(
+            name = "District Education Officers",
+            groupType = GroupType.ADMINISTRATIVE.dbValue
+        ).getOrNull()
+        assertNotNull(group)
+
+        val r2Repo = createFakeR2Repo(isSuccess = true)
+        val uploadManager = R2ImageUploadManager(context, r2Repo)
+        val viewModel = ChatGroupViewModel(
+            application = application,
+            groupRepo = groupRepository,
+            r2UploadManager = uploadManager,
+            sessionManager = sessionManager
+        )
+
+        assertEquals(officerUser.id, viewModel.uiState.value.currentProfile?.id)
+
+        val sampleUri = createSampleImageUri()
+        val uploadResult = uploadManager.uploadImageFromUri(
+            uri = sampleUri,
+            groupId = group!!.id,
+            customFileName = "circular_notice.jpg"
+        )
+        assertTrue("Upload must succeed", uploadResult.isSuccess)
+        val binaryResult = uploadResult.getOrNull()
+        assertNotNull(binaryResult)
+        assertNotNull(binaryResult?.objectKey)
+        val expectedObjectKey = binaryResult!!.objectKey!!
+        assertTrue(expectedObjectKey.isNotEmpty())
+
+        val sendRes = groupRepository.sendGroupMessage(
+            groupId = group.id,
+            content = "कृपया संलग्न परिपत्रक तपासावे.",
+            messageType = "image",
+            mediaUrl = expectedObjectKey
+        )
+        assertTrue("Image message must send successfully", sendRes.isSuccess)
+        val sentMsg = sendRes.getOrNull()
+        assertNotNull(sentMsg)
+        assertEquals("image", sentMsg?.messageType)
+        assertEquals(expectedObjectKey, sentMsg?.mediaUrl)
+        assertTrue(sentMsg?.isImageMessage == true)
+        assertEquals("कृपया संलग्न परिपत्रक तपासावे.", sentMsg?.content)
+
+        val fetchedMessages = groupRepository.getGroupMessages(group.id).getOrThrow()
+        assertEquals(1, fetchedMessages.size)
+        val storedMsg = fetchedMessages[0]
+        assertEquals(expectedObjectKey, storedMsg.mediaUrl)
+        assertEquals("image", storedMsg.messageType)
+        assertTrue(storedMsg.isImageMessage)
+
+        val resolvedDirect = viewModel.resolveMediaUrl(group.id, "https://legacy.educhat.edu/img/photo.png")
+        assertEquals("https://legacy.educhat.edu/img/photo.png", resolvedDirect)
+
+        val resolvedSignedUrl = viewModel.resolveMediaUrl(group.id, storedMsg.mediaUrl!!)
+        assertNotNull(resolvedSignedUrl)
+        assertTrue(resolvedSignedUrl!!.contains(expectedObjectKey))
     }
 }

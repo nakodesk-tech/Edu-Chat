@@ -45,6 +45,27 @@ class R2UploadApiTest {
     private lateinit var context: Context
     private lateinit var sessionManager: SessionManager
 
+    open class BaseFakeR2UploadApi : R2UploadApi {
+        override suspend fun createUploadUrl(
+            apiKey: String,
+            bearerToken: String,
+            request: R2UploadUrlRequest
+        ): Response<R2UploadUrlResponse> = Response.error(501, "".toResponseBody(null))
+
+        override suspend fun createUploadUrlWithCustomUrl(
+            customUrl: String,
+            apiKey: String,
+            bearerToken: String,
+            request: R2UploadUrlRequest
+        ): Response<R2UploadUrlResponse> = Response.error(501, "".toResponseBody(null))
+
+        override suspend fun getDownloadUrl(
+            apiKey: String,
+            bearerToken: String,
+            request: R2DownloadUrlRequest
+        ): Response<R2DownloadUrlResponse> = Response.error(501, "".toResponseBody(null))
+    }
+
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
@@ -115,7 +136,7 @@ class R2UploadApiTest {
     fun testR2StorageRepository_SuccessfulUploadUrlCreation() = runBlocking {
         setTestSession("valid_bearer_token")
 
-        val fakeApi = object : R2UploadApi {
+        val fakeApi = object : BaseFakeR2UploadApi() {
             override suspend fun createUploadUrl(
                 apiKey: String,
                 bearerToken: String,
@@ -159,7 +180,7 @@ class R2UploadApiTest {
     fun testR2StorageRepository_UnauthorizedResponse401() = runBlocking {
         setTestSession("expired_token")
 
-        val fakeApi = object : R2UploadApi {
+        val fakeApi = object : BaseFakeR2UploadApi() {
             override suspend fun createUploadUrl(
                 apiKey: String,
                 bearerToken: String,
@@ -192,7 +213,7 @@ class R2UploadApiTest {
     fun testR2StorageRepository_ServerError500OrMalformed() = runBlocking {
         setTestSession("valid_token")
 
-        val fakeApi = object : R2UploadApi {
+        val fakeApi = object : BaseFakeR2UploadApi() {
             override suspend fun createUploadUrl(
                 apiKey: String,
                 bearerToken: String,

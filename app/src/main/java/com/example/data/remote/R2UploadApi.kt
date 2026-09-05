@@ -35,8 +35,5 @@ interface R2UploadApi {
         @Header("apikey") apiKey: String,
         @Header("Authorization") bearerToken: String,
         @Body request: R2DownloadUrlRequest
-    ): Response<R2DownloadUrlResponse> = Response.error(
-        501,
-        okhttp3.ResponseBody.create(null, "Not implemented in default interface stub")
-    )
+    ): Response<R2DownloadUrlResponse>
 }
