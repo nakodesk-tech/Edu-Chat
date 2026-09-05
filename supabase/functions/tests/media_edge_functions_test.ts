@@ -1,4 +1,5 @@
 import { assertEquals, assertMatch } from "jsr:@std/assert";
+import { isAuthorizedRole, isOfficerAdminRole } from "../_shared/auth.ts";
 import {
   validateMediaFile,
   getSafeExtension,
@@ -135,5 +136,37 @@ Deno.test("r2-get-download-url namespace and traversal validation", () => {
   // Path traversal attempt
   const traversalKey = `groups/${targetGroupId}/../../secret.key`;
   assertEquals(traversalKey.includes(".."), true);
+});
+
+Deno.test("auth role validation - accepts officer_admin, school_admin, teacher, student", () => {
+  // All 4 valid roles must be accepted
+  assertEquals(isAuthorizedRole("officer_admin"), true);
+  assertEquals(isAuthorizedRole("school_admin"), true);
+  assertEquals(isAuthorizedRole("teacher"), true);
+  assertEquals(isAuthorizedRole("student"), true);
+
+  // Case-insensitive and trimmed
+  assertEquals(isAuthorizedRole(" OFFICER_ADMIN "), true);
+  assertEquals(isAuthorizedRole("School_Admin"), true);
+
+  // Unauthorized roles must be rejected
+  assertEquals(isAuthorizedRole("guest"), false);
+  assertEquals(isAuthorizedRole("parent"), false);
+  assertEquals(isAuthorizedRole("super_user"), false);
+  assertEquals(isAuthorizedRole(""), false);
+  assertEquals(isAuthorizedRole(null), false);
+  assertEquals(isAuthorizedRole(undefined), false);
+});
+
+Deno.test("auth officer admin role check - identifies officer_admin correctly", () => {
+  assertEquals(isOfficerAdminRole("officer_admin"), true);
+  assertEquals(isOfficerAdminRole("OFFICER_ADMIN"), true);
+  assertEquals(isOfficerAdminRole(" officer_admin "), true);
+
+  assertEquals(isOfficerAdminRole("school_admin"), false);
+  assertEquals(isOfficerAdminRole("teacher"), false);
+  assertEquals(isOfficerAdminRole("student"), false);
+  assertEquals(isOfficerAdminRole(""), false);
+  assertEquals(isOfficerAdminRole(null), false);
 });
 

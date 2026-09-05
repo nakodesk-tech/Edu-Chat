@@ -10,6 +10,18 @@ export type AuthResult =
   | { success: true; context: AuthorizedContext }
   | { success: false; status: number; error: string };
 
+export function isAuthorizedRole(role: string | null | undefined): boolean {
+  if (!role) return false;
+  const normalized = role.trim().toLowerCase();
+  return ["officer_admin", "school_admin", "teacher", "student"].includes(normalized);
+}
+
+export function isOfficerAdminRole(role: string | null | undefined): boolean {
+  if (!role) return false;
+  const normalized = role.trim().toLowerCase();
+  return normalized === "officer_admin";
+}
+
 /**
  * Extracts the Bearer token from the HTTP Authorization header.
  */
@@ -116,6 +128,15 @@ export async function authorizeGroupAccess(
     };
   }
 
+  const rawRole = (profile.role || "").trim().toLowerCase();
+  if (!isAuthorizedRole(rawRole)) {
+    return {
+      success: false,
+      status: 403,
+      error: "Forbidden: unauthorized role.",
+    };
+  }
+
   // 3. Validate target group: active group
   const { data: group, error: groupError } = await adminClient
     .from("groups")
@@ -148,9 +169,9 @@ export async function authorizeGroupAccess(
   }
 
   // 4. Validate group membership: active member of the target group
-  // An authenticated active Officer Admin has administrative authority to access any active group.
+  // Officer Admin has administrative group access or group membership.
   // Other roles must be verified active members in `group_members`.
-  const isOfficerAdmin = profile.role === "officer_admin";
+  const isOfficerAdmin = isOfficerAdminRole(rawRole);
 
   const { data: membership, error: memberError } = await adminClient
     .from("group_members")
@@ -183,6 +204,15 @@ export async function authorizeGroupAccess(
         error: "Forbidden: group membership has been deactivated.",
       };
     }
+  } else {
+    // If an officer admin has an explicit group_members row, it must not be deactivated
+    if (membership && membership.is_active === false) {
+      return {
+        success: false,
+        status: 403,
+        error: "Forbidden: group membership has been deactivated.",
+      };
+    }
   }
 
   return {
@@ -190,7 +220,7 @@ export async function authorizeGroupAccess(
     context: {
       userId,
       groupId: cleanGroupId,
-      role: profile.role || "student",
+      role: rawRole,
     },
   };
 }
