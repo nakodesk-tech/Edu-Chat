@@ -909,7 +909,7 @@ open class FakeSupabaseDatabaseEngine : SupabaseAuthApi {
             ?: return Response.success(emptyList())
 
         val isMember = groupMembers.any { it.groupId == targetId && it.userId == callerId && it.isActive }
-        if (!isMember && group.createdBy != callerId) {
+        if (!isMember && group.createdBy != callerId && caller.role != "officer_admin") {
             return Response.error(403, "Forbidden".toResponseBody("application/json".toMediaTypeOrNull()))
         }
         return Response.success(listOf(group))
@@ -930,7 +930,7 @@ open class FakeSupabaseDatabaseEngine : SupabaseAuthApi {
         val targetGroupId = groupIdFilter.removePrefix("eq.").trim()
         val isMember = groupMembers.any { it.groupId == targetGroupId && it.userId == callerId && it.isActive }
         val group = groups.firstOrNull { it.id == targetGroupId }
-        if (!isMember && group?.createdBy != callerId) {
+        if (!isMember && group?.createdBy != callerId && caller.role != "officer_admin") {
             return Response.error(403, "Forbidden".toResponseBody("application/json".toMediaTypeOrNull()))
         }
         val members = groupMembers.filter { it.groupId == targetGroupId && it.isActive }
@@ -1099,7 +1099,7 @@ open class FakeSupabaseDatabaseEngine : SupabaseAuthApi {
         }
         val targetGroupId = groupIdFilter.removePrefix("eq.").trim()
         val isMember = groupMembers.any { it.groupId == targetGroupId && it.userId == callerId && it.isActive }
-        if (!isMember) {
+        if (!isMember && caller.role != "officer_admin") {
             return Response.error(403, "Forbidden".toResponseBody("application/json".toMediaTypeOrNull()))
         }
         val groupMsgs = messages.filter { it.groupId == targetGroupId && !it.isDeleted }
@@ -1120,7 +1120,7 @@ open class FakeSupabaseDatabaseEngine : SupabaseAuthApi {
             ?: return Response.error(404, "Group not found".toResponseBody("application/json".toMediaTypeOrNull()))
 
         val isMember = groupMembers.any { it.groupId == group.id && it.userId == callerId && it.isActive }
-        if (!isMember) {
+        if (!isMember && caller.role != "officer_admin" && group.createdBy != callerId) {
             return Response.error(403, "Not a member".toResponseBody("application/json".toMediaTypeOrNull()))
         }
         val rawType = request.messageType.trim().lowercase()

@@ -148,6 +148,10 @@ export async function authorizeGroupAccess(
   }
 
   // 4. Validate group membership: active member of the target group
+  // An authenticated active Officer Admin has administrative authority to access any active group.
+  // Other roles must be verified active members in `group_members`.
+  const isOfficerAdmin = profile.role === "officer_admin";
+
   const { data: membership, error: memberError } = await adminClient
     .from("group_members")
     .select("id, is_active, role_in_group")
@@ -163,20 +167,22 @@ export async function authorizeGroupAccess(
     };
   }
 
-  if (!membership) {
-    return {
-      success: false,
-      status: 403,
-      error: "Forbidden: authenticated user is not a member of this group.",
-    };
-  }
+  if (!isOfficerAdmin) {
+    if (!membership) {
+      return {
+        success: false,
+        status: 403,
+        error: "Forbidden: authenticated user is not a member of this group.",
+      };
+    }
 
-  if (membership.is_active === false) {
-    return {
-      success: false,
-      status: 403,
-      error: "Forbidden: group membership has been deactivated.",
-    };
+    if (membership.is_active === false) {
+      return {
+        success: false,
+        status: 403,
+        error: "Forbidden: group membership has been deactivated.",
+      };
+    }
   }
 
   return {

@@ -117,7 +117,7 @@ class GroupRepository(
 
             // Verify membership if not returned by RLS
             val isMember = members.any { it.userId == profile.id && it.isActive }
-            if (!isMember && group.createdBy != profile.id) {
+            if (!isMember && group.createdBy != profile.id && profile.userRole != UserRole.OFFICER_ADMIN) {
                 return@withContext Result.failure(SecurityException("आपल्याला या गटासाठी परवानगी नाही."))
             }
 

@@ -405,4 +405,81 @@ class ChatImageMessagingTest {
         assertNotNull(resolvedSignedUrl)
         assertTrue(resolvedSignedUrl!!.contains(expectedObjectKey))
     }
+
+    @Test
+    fun testOfficerAdminCanSendImageToExistingGroupWithoutExplicitMembership() = runBlocking {
+        // 1. Teacher creates an active teacher group
+        sessionManager.saveSession(
+            AuthSession(
+                accessToken = teacherUser.id,
+                refreshToken = "teacher-refresh-token",
+                profile = teacherUser
+            )
+        )
+        val createResult = groupRepository.createGroup(
+            name = "Grade 10 Science",
+            groupType = GroupType.TEACHER.dbValue
+        )
+        val classGroup = createResult.getOrThrow()
+        assertNotNull(classGroup)
+
+        // 2. Officer Admin logs in (Officer Admin has no explicit row in groupMembers)
+        val officerUser = UserProfile(
+            id = "officer-admin-uuid-2",
+            fullName = "Shri Suresh Jadhav",
+            email = "suresh.jadhav@education.gov.in",
+            mobile = "9823005566",
+            role = "officer_admin",
+            schoolId = null,
+            isActive = true
+        )
+        fakeDatabaseEngine.addProfile(officerUser)
+        sessionManager.saveSession(
+            AuthSession(
+                accessToken = officerUser.id,
+                refreshToken = "officer-refresh-token-2",
+                profile = officerUser
+            )
+        )
+
+        val r2Repo = createFakeR2Repo(isSuccess = true)
+        val uploadManager = R2ImageUploadManager(context, r2Repo)
+        val viewModel = ChatGroupViewModel(
+            application = application,
+            groupRepo = groupRepository,
+            r2UploadManager = uploadManager,
+            sessionManager = sessionManager
+        )
+
+        // Verify Officer Admin can access group details
+        val groupDetailsRes = groupRepository.getGroupDetails(classGroup.id)
+        assertTrue("Officer Admin must be able to view group details", groupDetailsRes.isSuccess)
+
+        // 3. Officer Admin uploads image to R2 for the class group
+        val sampleUri = createSampleImageUri()
+        val uploadResult = uploadManager.uploadImageFromUri(
+            uri = sampleUri,
+            groupId = classGroup.id,
+            customFileName = "inspection_report.jpg"
+        )
+        assertTrue("Officer Admin R2 upload must succeed", uploadResult.isSuccess)
+        val uploadedKey = uploadResult.getOrThrow().objectKey
+        assertNotNull(uploadedKey)
+
+        // 4. Officer Admin sends the image message
+        val sendRes = groupRepository.sendGroupMessage(
+            groupId = classGroup.id,
+            content = "वार्षिक तपासणी अहवाल जोडला आहे.",
+            messageType = "image",
+            mediaUrl = uploadedKey
+        )
+        assertTrue("Officer Admin image message send must succeed", sendRes.isSuccess)
+        val sent = sendRes.getOrThrow()
+        assertEquals("image", sent.messageType)
+        assertEquals(uploadedKey, sent.mediaUrl)
+
+        // 5. Verify messages in group include Officer Admin's image message
+        val messages = groupRepository.getGroupMessages(classGroup.id).getOrThrow()
+        assertTrue(messages.any { it.id == sent.id && it.mediaUrl == uploadedKey && it.isImageMessage })
+    }
 }
