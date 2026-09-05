@@ -1,5 +1,12 @@
 import { assertEquals, assertMatch } from "jsr:@std/assert";
-import { isAuthorizedRole, isOfficerAdminRole } from "../_shared/auth.ts";
+import {
+  isAuthorizedRole,
+  isOfficerAdminRole,
+  evaluateMediaAccess,
+  ProfileData,
+  GroupData,
+  GroupMembershipData,
+} from "../_shared/auth.ts";
 import {
   validateMediaFile,
   getSafeExtension,
@@ -162,11 +169,142 @@ Deno.test("auth officer admin role check - identifies officer_admin correctly", 
   assertEquals(isOfficerAdminRole("officer_admin"), true);
   assertEquals(isOfficerAdminRole("OFFICER_ADMIN"), true);
   assertEquals(isOfficerAdminRole(" officer_admin "), true);
+  assertEquals(isOfficerAdminRole("primary_officer_admin"), true);
 
   assertEquals(isOfficerAdminRole("school_admin"), false);
   assertEquals(isOfficerAdminRole("teacher"), false);
   assertEquals(isOfficerAdminRole("student"), false);
   assertEquals(isOfficerAdminRole(""), false);
   assertEquals(isOfficerAdminRole(null), false);
+});
+
+// =========================================================================
+// Focused Media Authorization Tests
+// =========================================================================
+
+const activeGroup: GroupData = { id: "grp-123", is_active: true };
+const activeMembership: GroupMembershipData = { id: "mem-1", is_active: true };
+
+Deno.test("media auth - active school_admin with school_id works", () => {
+  const profile: ProfileData = {
+    id: "usr-sa-1",
+    role: "school_admin",
+    is_active: true,
+    school_id: "sch-001",
+  };
+  const result = evaluateMediaAccess(profile, activeGroup, activeMembership);
+  assertEquals(result.allowed, true);
+  assertEquals(result.role, "school_admin");
+});
+
+Deno.test("media auth - active teacher works", () => {
+  const profile: ProfileData = {
+    id: "usr-t-1",
+    role: "teacher",
+    is_active: true,
+    school_id: "sch-001",
+  };
+  const result = evaluateMediaAccess(profile, activeGroup, activeMembership);
+  assertEquals(result.allowed, true);
+  assertEquals(result.role, "teacher");
+});
+
+Deno.test("media auth - active student works", () => {
+  const profile: ProfileData = {
+    id: "usr-st-1",
+    role: "student",
+    is_active: true,
+    school_id: "sch-001",
+  };
+  const result = evaluateMediaAccess(profile, activeGroup, activeMembership);
+  assertEquals(result.allowed, true);
+  assertEquals(result.role, "student");
+});
+
+Deno.test("media auth - active officer_admin with school_id NULL works", () => {
+  // Officer Admin valid profile with school_id = null and NO membership row
+  const profile: ProfileData = {
+    id: "usr-oa-1",
+    role: "officer_admin",
+    is_active: true,
+    school_id: null,
+  };
+  const result = evaluateMediaAccess(profile, activeGroup, null);
+  assertEquals(result.allowed, true);
+  assertEquals(result.role, "officer_admin");
+});
+
+Deno.test("media auth - primary officer_admin (using stored role value) works", () => {
+  // Primary Officer Admin stored as role = "officer_admin", is_primary_admin = true, school_id = null
+  const primaryProfile1: ProfileData = {
+    id: "usr-poa-1",
+    role: "officer_admin",
+    is_active: true,
+    is_primary_admin: true,
+    school_id: null,
+  };
+  const result1 = evaluateMediaAccess(primaryProfile1, activeGroup, null);
+  assertEquals(result1.allowed, true);
+  assertEquals(result1.role, "officer_admin");
+
+  // Or if stored as role = "primary_officer_admin"
+  const primaryProfile2: ProfileData = {
+    id: "usr-poa-2",
+    role: "primary_officer_admin",
+    is_active: true,
+    school_id: null,
+  };
+  const result2 = evaluateMediaAccess(primaryProfile2, activeGroup, null);
+  assertEquals(result2.allowed, true);
+  assertEquals(result2.role, "primary_officer_admin");
+});
+
+Deno.test("media auth - inactive user denied", () => {
+  const inactiveProfile: ProfileData = {
+    id: "usr-inact-1",
+    role: "officer_admin",
+    is_active: false,
+    school_id: null,
+  };
+  const result = evaluateMediaAccess(inactiveProfile, activeGroup, null);
+  assertEquals(result.allowed, false);
+  assertEquals(result.status, 403);
+  assertEquals(result.branch, "BRANCH_PROFILE_DEACTIVATED");
+});
+
+Deno.test("media auth - unauthorized user denied", () => {
+  // Unknown or unauthorized role
+  const unauthorizedProfile: ProfileData = {
+    id: "usr-unauth-1",
+    role: "parent",
+    is_active: true,
+    school_id: "sch-001",
+  };
+  const result = evaluateMediaAccess(unauthorizedProfile, activeGroup, activeMembership);
+  assertEquals(result.allowed, false);
+  assertEquals(result.status, 403);
+  assertEquals(result.branch, "BRANCH_ROLE_UNAUTHORIZED");
+});
+
+Deno.test("media auth - school_id NULL alone never causes a 403", () => {
+  // For teacher with school_id = null (e.g. multi-school or pending assignment) but active group member
+  const teacherNullSchool: ProfileData = {
+    id: "usr-t-null",
+    role: "teacher",
+    is_active: true,
+    school_id: null,
+  };
+  const resTeacher = evaluateMediaAccess(teacherNullSchool, activeGroup, activeMembership);
+  assertEquals(resTeacher.allowed, true);
+
+  // For officer admin with school_id = null
+  const officerNullSchool: ProfileData = {
+    id: "usr-oa-null",
+    role: "officer_admin",
+    is_active: true,
+    school_id: null,
+  };
+  const resOfficer = evaluateMediaAccess(officerNullSchool, activeGroup, null);
+  assertEquals(resOfficer.allowed, true);
 });
 
