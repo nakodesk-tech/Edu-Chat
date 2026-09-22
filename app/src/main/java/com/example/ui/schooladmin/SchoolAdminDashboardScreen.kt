@@ -29,6 +29,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Apartment
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Business
@@ -49,6 +50,7 @@ import androidx.compose.material.icons.filled.Phone
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.chat.ChatGroupViewModel
 import com.example.ui.chat.ChatsTabContent
+import com.example.ui.assessment.AssessmentTabContent
 import com.example.ui.students.StudentManagementContent
 import com.example.ui.students.StudentManagementViewModel
 import androidx.compose.material.icons.filled.PowerSettingsNew
@@ -289,6 +291,16 @@ fun SchoolAdminDashboardScreen(
                     modifier = Modifier.testTag("tab_students")
                 )
 
+                // Tab 4: चाचण्या
+                NavigationBarItem(
+                    selected = uiState.selectedTab == SchoolAdminTab.ASSESSMENTS,
+                    onClick = { viewModel.selectTab(SchoolAdminTab.ASSESSMENTS) },
+                    icon = { Icon(imageVector = Icons.Default.Assessment, contentDescription = "चाचण्या", modifier = Modifier.size(22.dp)) },
+                    label = { Text(text = SchoolAdminTab.ASSESSMENTS.marathiTitle, fontWeight = if (uiState.selectedTab == SchoolAdminTab.ASSESSMENTS) FontWeight.Bold else FontWeight.Normal, fontSize = 12.sp) },
+                    colors = NavigationBarItemDefaults.colors(selectedIconColor = PrimaryIndigo, selectedTextColor = PrimaryIndigo, indicatorColor = PrimaryIndigoContainer, unselectedIconColor = TextTertiary, unselectedTextColor = TextSecondary),
+                    modifier = Modifier.testTag("tab_assessments")
+                )
+
                 // Tab 4: माझी शाळा
                 NavigationBarItem(
                     selected = uiState.selectedTab == SchoolAdminTab.MY_SCHOOL,
@@ -372,6 +384,10 @@ fun SchoolAdminDashboardScreen(
                 SchoolAdminTab.STUDENTS -> {
                     val studentViewModel: StudentManagementViewModel = viewModel(key = "student_schooladmin_${uiState.profile?.id ?: "school_admin"}")
                     StudentManagementContent(viewModel = studentViewModel)
+                }
+                SchoolAdminTab.ASSESSMENTS -> {
+                    val assessmentViewModel: com.example.ui.assessment.AssessmentViewModel = viewModel(key = "assessment_school_admin")
+                    AssessmentTabContent(viewModel = assessmentViewModel, roleColor = PrimaryIndigo, roleContainerColor = PrimaryIndigoContainer)
                 }
                 SchoolAdminTab.MY_SCHOOL -> {
                     MySchoolTabContent(

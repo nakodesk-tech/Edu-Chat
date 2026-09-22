@@ -66,6 +66,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.data.model.AuthSession
 import com.example.data.model.UserRole
+import com.example.ui.assessment.AssessmentTabContent
+import com.example.ui.assessment.AssessmentViewModel
 import com.example.ui.chat.ChatGroupViewModel
 import com.example.ui.chat.ChatsTabContent
 import com.example.ui.students.StudentManagementContent
@@ -112,8 +114,8 @@ fun RolePlaceholderScreen(
 
     val tab2Title = if (role == UserRole.TEACHER) "विद्यार्थी" else "अभ्यास"
     val tab2Icon = if (role == UserRole.TEACHER) Icons.Default.People else Icons.Default.MenuBook
-    val tab3Title = if (role == UserRole.TEACHER) "चाचण्या" else "प्रगती"
-    val tab3Icon = if (role == UserRole.TEACHER) Icons.Default.Assessment else Icons.Default.AutoGraph
+    val tab3Title = "चाचण्या"
+    val tab3Icon = Icons.Default.Assessment
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -316,10 +318,9 @@ fun RolePlaceholderScreen(
                     }
                 }
                 2 -> {
-                    RolePlaceholderUpcomingTab(
-                        title = tab3Title,
-                        subtitle = "हे वैशिष्ट्य पुढील टप्प्यात उपलब्ध होईल (Coming Soon in next phase)",
-                        icon = tab3Icon,
+                    val assessmentViewModel: AssessmentViewModel = viewModel(key = "assessment_$sessionKey")
+                    AssessmentTabContent(
+                        viewModel = assessmentViewModel,
                         roleColor = roleColor,
                         roleContainerColor = roleContainerColor
                     )

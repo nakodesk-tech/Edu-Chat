@@ -60,6 +60,8 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.Group
 import com.example.data.model.UserProfile
 import com.example.data.model.UserRole
+import com.example.ui.assessment.AssessmentTabContent
+import com.example.ui.assessment.AssessmentViewModel
 import com.example.ui.theme.AccentAmber
 import com.example.ui.theme.AccentAmberContainer
 import com.example.ui.theme.BorderSubtle
@@ -105,6 +107,24 @@ fun ChatsTabContent(
 
     if (uiState.activeChatGroup != null) {
         val activeGroup = uiState.activeChatGroup!!
+        val assessmentViewModel: AssessmentViewModel = viewModel(key = "assessment_chat_" + activeGroup.id)
+        val assessmentState by assessmentViewModel.uiState.collectAsState()
+        if (assessmentState.selectedAssessment != null) {
+            AssessmentTabContent(
+                viewModel = assessmentViewModel,
+                modifier = modifier,
+                roleColor = when (currentRole) {
+                    UserRole.STUDENT -> SecondaryGreen
+                    UserRole.TEACHER -> PrimaryIndigo
+                    else -> AccentAmber
+                },
+                roleContainerColor = when (currentRole) {
+                    UserRole.STUDENT -> SecondaryGreenContainer
+                    UserRole.TEACHER -> PrimaryIndigoContainer
+                    else -> AccentAmberContainer
+                }
+            )
+        } else {
         GroupChatScreen(
             group = activeGroup,
             messages = uiState.messages,
@@ -115,6 +135,8 @@ fun ChatsTabContent(
             isSending = uiState.isSendingMessage,
             errorMessage = uiState.errorMessage,
             imageUploadState = uiState.imageUploadState,
+            sharedAssessments = uiState.sharedAssessments,
+            onAssessmentClick = { assessment -> assessmentViewModel.openAssessment(assessment, activeGroup.id) },
             onBackClick = { viewModel.closeChatGroup() },
             onInfoClick = { viewModel.openGroupInfo() },
             onMessageInputChange = { viewModel.setMessageInput(it) },
@@ -126,6 +148,7 @@ fun ChatsTabContent(
             onResolveMediaUrl = { groupId, objectKey -> viewModel.resolveMediaUrl(groupId, objectKey) },
             modifier = modifier
         )
+        }
     } else {
         Box(modifier = modifier.fillMaxSize()) {
             Column(

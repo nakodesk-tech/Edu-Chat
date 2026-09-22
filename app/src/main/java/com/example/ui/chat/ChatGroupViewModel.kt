@@ -12,6 +12,7 @@ import com.example.data.model.GroupType
 import com.example.data.model.School
 import com.example.data.model.UserProfile
 import com.example.data.model.UserRole
+import com.example.data.repository.AssessmentRepository
 import com.example.data.repository.GroupRepository
 import com.example.data.repository.R2ImageUploadManager
 import kotlinx.coroutines.Job
@@ -40,6 +41,7 @@ data class ChatGroupUiState(
     val activeChatGroup: Group? = null,
     val selectedGroupMembers: List<GroupMember> = emptyList(),
     val messages: List<ChatMessage> = emptyList(),
+    val sharedAssessments: List<com.example.data.model.AssessmentSummary> = emptyList(),
     val messageInput: String = "",
     val activeSchools: List<School> = emptyList(),
     val showCreateDialog: Boolean = false,
@@ -60,6 +62,7 @@ data class ChatGroupUiState(
 class ChatGroupViewModel @JvmOverloads constructor(
     application: Application,
     private val groupRepo: GroupRepository = GroupRepository(application),
+    private val assessmentRepo: AssessmentRepository = AssessmentRepository(application),
     private val r2UploadManager: R2ImageUploadManager = R2ImageUploadManager(application),
     private val sessionManager: SessionManager = SessionManager(application)
 ) : AndroidViewModel(application) {
@@ -153,6 +156,7 @@ class ChatGroupViewModel @JvmOverloads constructor(
                 selectedGroup = group,
                 showGroupDetailDialog = false,
                 messages = emptyList(),
+                sharedAssessments = emptyList(),
                 messageInput = "",
                 errorMessage = null
             )
@@ -160,6 +164,14 @@ class ChatGroupViewModel @JvmOverloads constructor(
         loadGroupDetailsInternal(group.id)
         loadMessages(group.id)
         startRealtimeMessagesObservation(group.id)
+        loadSharedAssessments(group.id)
+    }
+
+    private fun loadSharedAssessments(groupId: String) {
+        viewModelScope.launch {
+            val result = assessmentRepo.getAssessmentsForGroup(groupId)
+            _uiState.update { it.copy(sharedAssessments = result.getOrDefault(emptyList())) }
+        }
     }
 
     fun closeChatGroup() {
@@ -171,6 +183,7 @@ class ChatGroupViewModel @JvmOverloads constructor(
                 selectedGroup = null,
                 selectedGroupMembers = emptyList(),
                 messages = emptyList(),
+                sharedAssessments = emptyList(),
                 messageInput = "",
                 showGroupDetailDialog = false,
                 errorMessage = null

@@ -34,6 +34,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material.icons.filled.ChatBubbleOutline
@@ -83,6 +84,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.net.toUri
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
+import com.example.data.model.AssessmentSummary
 import com.example.data.model.ChatMessage
 import com.example.data.model.Group
 import com.example.data.model.GroupMember
@@ -114,6 +116,8 @@ fun GroupChatScreen(
     isSending: Boolean,
     errorMessage: String?,
     imageUploadState: ChatImageUploadState = ChatImageUploadState.Idle,
+    sharedAssessments: List<AssessmentSummary> = emptyList(),
+    onAssessmentClick: (AssessmentSummary) -> Unit = {},
     onBackClick: () -> Unit,
     onInfoClick: () -> Unit,
     onMessageInputChange: (String) -> Unit,
@@ -305,7 +309,7 @@ fun GroupChatScreen(
                         }
                     }
                 }
-            } else if (activeMessages.isEmpty()) {
+            } else if (activeMessages.isEmpty() && sharedAssessments.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -358,6 +362,53 @@ fun GroupChatScreen(
                     contentPadding = PaddingValues(top = 12.dp, bottom = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    if (sharedAssessments.isNotEmpty()) {
+                        item {
+                            Text(
+                                text = "गटातील चाचण्या",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = TextPrimary,
+                                modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                            )
+                        }
+                        itemsIndexed(sharedAssessments, key = { _, item -> "assessment_" + item.id }) { _, assessment ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onAssessmentClick(assessment) },
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = PrimaryIndigoContainer),
+                                border = BorderStroke(1.dp, BorderSubtle)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Surface(
+                                        modifier = Modifier.size(46.dp),
+                                        shape = RoundedCornerShape(13.dp),
+                                        color = Color.White
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(Icons.Default.Assessment, null, tint = PrimaryIndigo, modifier = Modifier.size(25.dp))
+                                        }
+                                    }
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(assessment.title, fontWeight = FontWeight.Bold, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(
+                                            assessment.subject + " • इयत्ता " + assessment.standard + " • " + assessment.totalQuestions + " प्रश्न",
+                                            fontSize = 11.sp,
+                                            color = TextSecondary
+                                        )
+                                    }
+                                    Icon(Icons.AutoMirrored.Filled.Send, null, tint = PrimaryIndigo, modifier = Modifier.size(20.dp))
+                                }
+                            }
+                        }
+                    }
+
                     itemsIndexed(activeMessages, key = { _, item -> item.id }) { index, message ->
                         val isOutgoing = currentUser?.id != null && message.senderId == currentUser.id
                         val prevMessage = if (index > 0) activeMessages[index - 1] else null
