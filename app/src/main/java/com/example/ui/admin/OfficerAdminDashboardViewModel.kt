@@ -17,6 +17,7 @@ import kotlinx.coroutines.launch
 enum class OfficerAdminTab(val marathiTitle: String) {
     CHATS("चॅट्स"),
     USERS("वापरकर्ते"),
+    ASSESSMENTS("चाचण्या"),
     SCHOOLS("शाळा"),
     MY_PROFILE("माझे प्रोफाइल")
 }

@@ -272,6 +272,58 @@ interface SupabaseAuthApi {
         @Query("order") order: String = "created_at.asc"
     ): Response<List<ChatMessage>>
 
+    @GET("rest/v1/rpc/get_assessment_summaries")
+    suspend fun getAssessmentSummaries(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") bearerToken: String
+    ): Response<List<com.example.data.model.AssessmentSummary>>
+
+    @GET("rest/v1/assessment_questions")
+    suspend fun getAssessmentQuestions(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") bearerToken: String,
+        @Query("assessment_id") assessmentIdFilter: String,
+        @Query("select") select: String = "*",
+        @Query("order") order: String = "question_no.asc"
+    ): Response<List<com.example.data.model.AssessmentQuestion>>
+
+    @GET("rest/v1/assessment_group_shares")
+    suspend fun getAssessmentSharesForGroup(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") bearerToken: String,
+        @Query("group_id") groupIdFilter: String,
+        @Query("select") select: String = "assessment_id"
+    ): Response<List<com.example.data.model.AssessmentShareId>>
+
+    @POST("rest/v1/rpc/create_assessment")
+    suspend fun createAssessmentRpc(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") bearerToken: String,
+        @Body request: com.example.data.model.CreateAssessmentRequest
+    ): Response<com.example.data.model.AssessmentSummary>
+
+    @POST("rest/v1/rpc/share_assessment_to_group")
+    suspend fun shareAssessmentRpc(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") bearerToken: String,
+        @Body request: com.example.data.model.ShareAssessmentRequest
+    ): Response<com.example.data.model.AssessmentShareId>
+
+    @GET("rest/v1/assessment_attempts")
+    suspend fun getMyAssessmentAttempts(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") bearerToken: String,
+        @Query("student_id") studentIdFilter: String,
+        @Query("select") select: String = "*"
+    ): Response<List<com.example.data.model.AssessmentAttempt>>
+
+    @POST("rest/v1/rpc/submit_assessment_attempt")
+    suspend fun submitAssessmentRpc(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") bearerToken: String,
+        @Body request: com.example.data.model.SubmitAssessmentRequest
+    ): Response<com.example.data.model.AssessmentAttempt>
+
     @POST("rest/v1/rpc/send_group_message")
     suspend fun sendGroupMessageRpc(
         @Header("apikey") apiKey: String,

@@ -29,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddBusiness
 import androidx.compose.material.icons.filled.AdminPanelSettings
@@ -84,6 +85,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.chat.ChatGroupViewModel
 import com.example.ui.chat.ChatsTabContent
 import com.example.ui.users.RegisteredUsersContent
+import com.example.ui.assessment.AssessmentTabContent
 import com.example.ui.users.RegisteredUserDetailDialog
 import com.example.ui.users.EditUserDialog
 import com.example.ui.users.ConfirmToggleUserStatusDialog
@@ -206,6 +208,16 @@ fun OfficerAdminDashboardScreen(
                     modifier = Modifier.testTag("tab_users")
                 )
 
+                // Tab 3: चाचण्या
+                NavigationBarItem(
+                    selected = uiState.selectedTab == OfficerAdminTab.ASSESSMENTS,
+                    onClick = { viewModel.selectTab(OfficerAdminTab.ASSESSMENTS) },
+                    icon = { Icon(imageVector = Icons.Default.Assessment, contentDescription = "चाचण्या", modifier = Modifier.size(22.dp)) },
+                    label = { Text(text = OfficerAdminTab.ASSESSMENTS.marathiTitle, fontWeight = if (uiState.selectedTab == OfficerAdminTab.ASSESSMENTS) FontWeight.Bold else FontWeight.Normal, fontSize = 12.sp) },
+                    colors = NavigationBarItemDefaults.colors(selectedIconColor = AccentAmber, selectedTextColor = AccentAmber, indicatorColor = AccentAmberContainer, unselectedIconColor = TextTertiary, unselectedTextColor = TextSecondary),
+                    modifier = Modifier.testTag("tab_assessments")
+                )
+
                 // Tab 3: शाळा
                 NavigationBarItem(
                     selected = uiState.selectedTab == OfficerAdminTab.SCHOOLS,
@@ -286,6 +298,10 @@ fun OfficerAdminDashboardScreen(
                             onUserClick = { user -> viewModel.selectUserForDetail(user) },
                             onRefresh = { viewModel.loadUsers() }
                         )
+                    }
+                    OfficerAdminTab.ASSESSMENTS -> {
+                        val assessmentViewModel: com.example.ui.assessment.AssessmentViewModel = viewModel(key = "assessment_officer")
+                        AssessmentTabContent(viewModel = assessmentViewModel, roleColor = AccentAmber, roleContainerColor = AccentAmberContainer)
                     }
                     OfficerAdminTab.SCHOOLS -> {
                         OfficerSchoolsTabContent(
