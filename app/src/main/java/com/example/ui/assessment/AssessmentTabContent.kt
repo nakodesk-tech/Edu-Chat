@@ -166,9 +166,19 @@ fun AssessmentTabContent(
         )
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            val filters = if (isStudent) listOf("सर्व", "सोडवलेल्या", "प्रकाशित") else listOf("सर्व", "माझ्या चाचण्या", "प्रकाशित", "मसुदा")
+            val allCount = state.assessments.size
+            val solvedCount = state.assessments.count { assessment -> state.attempts.any { it.assessmentId == assessment.id } }
+            val mineCount = state.assessments.count { it.createdBy == viewModel.currentSession?.profile?.id }
+            val publishedCount = state.assessments.count { it.status == "published" }
+            val draftCount = state.assessments.count { it.status == "draft" }
+            val filters = if (isStudent) {
+                listOf("सर्व (" + allCount + ")", "सोडवलेल्या (" + solvedCount + ")", "प्रकाशित (" + publishedCount + ")")
+            } else {
+                listOf("सर्व (" + allCount + ")", "माझ्या चाचण्या (" + mineCount + ")", "प्रकाशित (" + publishedCount + ")", "मसुदा (" + draftCount + ")")
+            }
             filters.forEach { value ->
-                FilterChip(selected = filter == value, onClick = { filter = value }, label = { Text(value, fontSize = 11.sp) })
+                val filterKey = value.substringBefore(" (")
+                FilterChip(selected = filter == filterKey, onClick = { filter = filterKey }, label = { Text(value, fontSize = 11.sp) })
             }
             IconButton(onClick = { viewModel.load() }) {
                 Icon(Icons.Default.FilterList, null, tint = TextSecondary)
