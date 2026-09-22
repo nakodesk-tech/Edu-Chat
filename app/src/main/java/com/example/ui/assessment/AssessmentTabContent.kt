@@ -57,6 +57,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -208,8 +209,8 @@ fun AssessmentTabContent(
             isLoading = state.isActionLoading,
             errorMessage = state.errorMessage,
             onDismiss = { if (!state.isActionLoading) showCreate = false },
-            onCreate = { title, subject, standard, duration, question ->
-                viewModel.createAssessment(title, subject, standard, duration, listOf(question)) {
+            onCreate = { title, subject, standard, duration, questions ->
+                viewModel.createAssessment(title, subject, standard, duration, questions) {
                     showCreate = false
                 }
             }
@@ -337,23 +338,27 @@ private fun EmptyAssessmentState(isStudent: Boolean, roleColor: Color, roleConta
     }
 }
 
+private data class QuestionDraft(
+    var question: String = "",
+    var optionA: String = "",
+    var optionB: String = "",
+    var optionC: String = "",
+    var optionD: String = "",
+    var correct: String = "A"
+)
+
 @Composable
 private fun CreateAssessmentDialog(
     isLoading: Boolean,
     errorMessage: String?,
     onDismiss: () -> Unit,
-    onCreate: (String, String, String, Int, AssessmentQuestionInput) -> Unit
+    onCreate: (String, String, String, Int, List<AssessmentQuestionInput>) -> Unit
 ) {
     var title by remember { mutableStateOf("") }
     var subject by remember { mutableStateOf("") }
     var standard by remember { mutableStateOf("") }
     var duration by remember { mutableStateOf("30") }
-    var question by remember { mutableStateOf("") }
-    var optionA by remember { mutableStateOf("") }
-    var optionB by remember { mutableStateOf("") }
-    var optionC by remember { mutableStateOf("") }
-    var optionD by remember { mutableStateOf("") }
-    var correct by remember { mutableStateOf("A") }
+    val questions = remember { mutableStateListOf(QuestionDraft()) }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxWidth(0.94f), RoundedCornerShape(22.dp), color = Color.White) {
@@ -369,25 +374,66 @@ private fun CreateAssessmentDialog(
                     OutlinedTextField(standard, { standard = it }, label = { Text("इयत्ता *") }, modifier = Modifier.weight(1f), singleLine = true)
                 }
                 OutlinedTextField(duration, { duration = it.filter(Char::isDigit) }, label = { Text("वेळ (मिनिटे) *") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                Text("प्रश्न 1", fontWeight = FontWeight.Bold, color = TextPrimary)
-                OutlinedTextField(question, { question = it }, label = { Text("प्रश्न *") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
-                OptionField("A", optionA, { optionA = it }, correct == "A") { correct = "A" }
-                OptionField("B", optionB, { optionB = it }, correct == "B") { correct = "B" }
-                OptionField("C", optionC, { optionC = it }, correct == "C") { correct = "C" }
-                OptionField("D", optionD, { optionD = it }, correct == "D") { correct = "D" }
+
+                questions.forEachIndexed { index, draft ->
+                    Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC))) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text("प्रश्न " + (index + 1), fontWeight = FontWeight.Bold, color = TextPrimary)
+                                if (questions.size > 1) {
+                                    TextButton(onClick = { questions.removeAt(index) }, enabled = !isLoading) {
+                                        Text("काढा", color = Color(0xFFDC2626))
+                                    }
+                                }
+                            }
+                            OutlinedTextField(
+                                value = draft.question,
+                                onValueChange = { draft.question = it },
+                                label = { Text("प्रश्न *") },
+                                modifier = Modifier.fillMaxWidth(),
+                                minLines = 2
+                            )
+                            OptionField("A", draft.optionA, { draft.optionA = it }, draft.correct == "A") { draft.correct = "A" }
+                            OptionField("B", draft.optionB, { draft.optionB = it }, draft.correct == "B") { draft.correct = "B" }
+                            OptionField("C", draft.optionC, { draft.optionC = it }, draft.correct == "C") { draft.correct = "C" }
+                            OptionField("D", draft.optionD, { draft.optionD = it }, draft.correct == "D") { draft.correct = "D" }
+                        }
+                    }
+                }
+
+                OutlinedButton(
+                    onClick = { questions.add(QuestionDraft()) },
+                    enabled = !isLoading && questions.size < 50,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Add, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("आणखी प्रश्न जोडा")
+                }
+
                 Button(
                     onClick = {
-                        onCreate(
-                            title.trim(), subject.trim(), standard.trim(), duration.toIntOrNull() ?: 30,
+                        val inputs = questions.mapIndexed { index, draft ->
                             AssessmentQuestionInput(
-                                1, question.trim(),
-                                mapOf("A" to optionA.trim(), "B" to optionB.trim(), "C" to optionC.trim(), "D" to optionD.trim()),
-                                correct
+                                questionNo = index + 1,
+                                questionText = draft.question.trim(),
+                                options = mapOf(
+                                    "A" to draft.optionA.trim(),
+                                    "B" to draft.optionB.trim(),
+                                    "C" to draft.optionC.trim(),
+                                    "D" to draft.optionD.trim()
+                                ),
+                                correctOption = draft.correct
                             )
-                        )
+                        }
+                        onCreate(title.trim(), subject.trim(), standard.trim(), duration.toIntOrNull() ?: 30, inputs)
                     },
-                    enabled = !isLoading && title.isNotBlank() && subject.isNotBlank() && standard.isNotBlank() && question.isNotBlank() &&
-                        optionA.isNotBlank() && optionB.isNotBlank() && optionC.isNotBlank() && optionD.isNotBlank(),
+                    enabled = !isLoading &&
+                        title.isNotBlank() && subject.isNotBlank() && standard.isNotBlank() &&
+                        questions.isNotEmpty() && questions.all {
+                            it.question.isNotBlank() && it.optionA.isNotBlank() && it.optionB.isNotBlank() &&
+                                it.optionC.isNotBlank() && it.optionD.isNotBlank()
+                        },
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     shape = RoundedCornerShape(12.dp)
                 ) {
