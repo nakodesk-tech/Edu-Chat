@@ -144,7 +144,14 @@ begin
   select * into v_group from public.groups where id=p_group_id and is_active=true;
   if v_assessment.id is null or v_group.id is null then raise exception 'Assessment or group not found'; end if;
   if v_assessment.created_by<>auth.uid() and v_profile.role<>'officer_admin' then raise exception 'Only the creator or Officer Admin can share this assessment'; end if;
-  if v_profile.role<>'officer_admin' and v_group.school_id is distinct from v_profile.school_id then raise exception 'Group is outside the current school'; end if;
+  if v_profile.role='teacher' then
+    if v_group.school_id is distinct from v_profile.school_id
+       or not exists (select 1 from public.group_members gm where gm.group_id=p_group_id and gm.user_id=auth.uid() and gm.is_active=true) then
+      raise exception 'Teacher can share only to an active group membership in the same school';
+    end if;
+  elsif v_profile.role='school_admin' and v_group.school_id is distinct from v_profile.school_id then
+    raise exception 'Group is outside the current school';
+  end if;
   insert into public.assessment_group_shares(assessment_id,group_id,shared_by) values(p_assessment_id,p_group_id,auth.uid())
   on conflict(assessment_id,group_id) do update set shared_by=excluded.shared_by,shared_at=timezone('utc',now()) returning * into v_share;
   return v_share;
